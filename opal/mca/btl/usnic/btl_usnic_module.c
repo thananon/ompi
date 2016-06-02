@@ -23,6 +23,7 @@
  * $HEADER$
  */
 
+
 #include "opal_config.h"
 
 #include <errno.h>
@@ -926,7 +927,6 @@ usnic_do_resends(
 
     while ((get_send_credits(data_channel) > 1) &&
            !opal_list_is_empty(&module->pending_resend_segs)) {
-
         /*
          * If a segment is on the re-send list, it will not
          * be in the retransmit hotel.  Post the segment, then check it in.
@@ -960,13 +960,16 @@ usnic_do_resends(
         }
 
         /* restart the retrans timer */
+        OPAL_THREAD_LOCK(&btl_usnic_hotel_lock);
         ret = opal_hotel_checkin(&endpoint->endpoint_hotel,
                 sseg, &sseg->ss_hotel_room);
+        OPAL_THREAD_UNLOCK(&btl_usnic_hotel_lock);
         if (OPAL_UNLIKELY(OPAL_SUCCESS != ret)) {
             BTL_ERROR(("hotel checkin failed\n"));
             abort();    /* should not be possible */
         }
     }
+
 }
 
 /* Given a large send frag (which is at the head of the given endpoint's send
@@ -1086,6 +1089,7 @@ opal_btl_usnic_module_progress_sends(
     /*
      * Handle all the retransmits we can
      */
+    OPAL_THREAD_LOCK(&btl_usnic_send_lock);
     if (OPAL_UNLIKELY(!opal_list_is_empty(&module->pending_resend_segs))) {
         usnic_do_resends(module);
     }
@@ -1104,6 +1108,7 @@ opal_btl_usnic_module_progress_sends(
          * the endpoint's send window is open, and the endpoint has send
          * credits.
          */
+         
 
         endpoint = (opal_btl_usnic_endpoint_t *)
             opal_list_get_first(&module->endpoints_with_sends);
@@ -1121,6 +1126,7 @@ opal_btl_usnic_module_progress_sends(
              */
             opal_list_remove_item(&endpoint->endpoint_frag_send_queue,
                     &frag->sf_base.uf_base.super.super);
+
 
             sfrag = (opal_btl_usnic_small_send_frag_t *)frag;
             sseg = &sfrag->ssf_segment;
@@ -1157,7 +1163,6 @@ opal_btl_usnic_module_progress_sends(
                     OPAL_BTL_USNIC_DO_SEND_FRAG_CB(module, frag, "small");
                 }
             }
-
         /* Large sends... */
         } else {
             usnic_handle_large_send(module, endpoint, frag);
@@ -1166,19 +1171,23 @@ opal_btl_usnic_module_progress_sends(
         /* If no more sends or endpoint send window is closed,
          * or no more send credits, remove from send list
          */
+   
+        OPAL_THREAD_LOCK(&btl_usnic_endpoint_ready_lock);
         if (opal_list_is_empty(&endpoint->endpoint_frag_send_queue) ||
             endpoint->endpoint_send_credits <= 0 ||
             !WINDOW_OPEN(endpoint)) {
-
             opal_list_remove_item(&module->endpoints_with_sends,
                     &endpoint->super);
             endpoint->endpoint_ready_to_send = false;
         }
+        OPAL_THREAD_UNLOCK(&btl_usnic_endpoint_ready_lock);
     }
+    OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
 
     /*
      * Handle any ACKs that need to be sent
      */
+    OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
     endpoint = opal_btl_usnic_get_first_endpoint_needing_ack(module);
     while (get_send_credits(prio_channel) > 1 && endpoint != NULL) {
         opal_btl_usnic_endpoint_t *next_endpoint;
@@ -1195,6 +1204,7 @@ opal_btl_usnic_module_progress_sends(
 
         endpoint = next_endpoint;
     }
+    OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
 }
 
 /*
@@ -1229,6 +1239,7 @@ usnic_send(
     opal_btl_usnic_module_t *module;
     opal_btl_usnic_send_segment_t *sseg;
 
+    OPAL_THREAD_LOCK(&btl_usnic_send_lock);
     endpoint = (opal_btl_usnic_endpoint_t *)base_endpoint;
     module = (opal_btl_usnic_module_t *)base_module;
     frag = (opal_btl_usnic_send_frag_t*) descriptor;
@@ -1337,6 +1348,7 @@ usnic_send(
 
     ++module->stats.pml_module_sends;
 
+    OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
     return rc;
 }
 
@@ -1754,7 +1766,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
     if (OPAL_SUCCESS != rc) {
         goto error;
     }
-
+    
     /* Post receive descriptors */
     for (i = 0; i < rd_num; i++) {
         USNIC_COMPAT_FREE_LIST_GET(&channel->recv_segs, item);

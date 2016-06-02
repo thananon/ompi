@@ -618,9 +618,13 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     /* Currently refuse to run if MPI_THREAD_MULTIPLE is enabled */
     if (want_mpi_threads && !mca_btl_base_thread_multiple_override) {
         opal_output_verbose(5, USNIC_OUT,
-                            "btl:usnic: MPI_THREAD_MULTIPLE not supported; skipping this component");
-        return NULL;
+                            "btl:usnic: MPI_THREAD_MULTIPLE support is in testing phase.");
     }
+
+    OBJ_CONSTRUCT(&btl_usnic_send_lock, opal_recursive_mutex_t);
+    OBJ_CONSTRUCT(&btl_usnic_ack_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&btl_usnic_hotel_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&btl_usnic_endpoint_ready_lock, opal_mutex_t);
 
     /* We only want providers named "usnic that are of type EP_DGRAM */
     fabric_attr.prov_name = "usnic";
@@ -1156,23 +1160,30 @@ static int usnic_handle_completion(
 
     /**** Send ACK completions ****/
     case OPAL_BTL_USNIC_SEG_ACK:
+        OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
         opal_btl_usnic_ack_complete(module,
                 (opal_btl_usnic_ack_segment_t *)seg);
+        OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
         break;
 
     /**** Send of frag segment completion ****/
     case OPAL_BTL_USNIC_SEG_FRAG:
+        OPAL_THREAD_LOCK(&btl_usnic_send_lock);
         opal_btl_usnic_frag_send_complete(module,
                 (opal_btl_usnic_frag_segment_t*)seg);
+        OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
         break;
 
     /**** Send of chunk segment completion ****/
     case OPAL_BTL_USNIC_SEG_CHUNK:
+        OPAL_THREAD_LOCK(&btl_usnic_send_lock);
         opal_btl_usnic_chunk_send_complete(module,
                 (opal_btl_usnic_chunk_segment_t*)seg);
+        OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
         break;
 
     /**** Receive completions ****/
+    /**** Recv needs no protection because we know we're the only one doing this. ****/
     case OPAL_BTL_USNIC_SEG_RECV:
         opal_btl_usnic_recv(module, rseg, channel);
         break;

@@ -173,5 +173,7 @@ opal_btl_usnic_flush_endpoint(
     }
 
     /* Now, ACK everything that is pending */
+    OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
     opal_btl_usnic_handle_ack(endpoint, endpoint->endpoint_next_seq_to_send-1);
+    OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
 }

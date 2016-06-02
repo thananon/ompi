@@ -90,6 +90,7 @@ opal_btl_usnic_handle_ack(
 
     /* Does this ACK have a new sequence number that we haven't
        seen before? */
+    sseg = NULL;
     for (is = endpoint->endpoint_ack_seq_rcvd + 1; SEQ_LE(is, ack_seq); ++is) {
         sseg = endpoint->endpoint_sent_segs[WINDOW_SIZE_MOD(is)];
 
@@ -115,8 +116,10 @@ opal_btl_usnic_handle_ack(
            If it's not in the hotel, don't check it out! */
         if (OPAL_LIKELY(sseg->ss_hotel_room != -1)) {
 
+            OPAL_THREAD_LOCK(&btl_usnic_hotel_lock);
             opal_hotel_checkout(&endpoint->endpoint_hotel, sseg->ss_hotel_room);
             sseg->ss_hotel_room = -1;
+            OPAL_THREAD_UNLOCK(&btl_usnic_hotel_lock);
 
         /* hotel_room == -1 means queued for resend, remove it */
         } else {

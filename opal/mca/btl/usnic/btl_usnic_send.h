@@ -32,6 +32,7 @@ opal_btl_usnic_check_rts(
      * and its retransmission window is open,
      * make it ready
      */
+    OPAL_THREAD_LOCK(&btl_usnic_endpoint_ready_lock);
     if (!endpoint->endpoint_ready_to_send &&
         !opal_list_is_empty(&endpoint->endpoint_frag_send_queue) &&
          endpoint->endpoint_send_credits > 0 &&
@@ -49,6 +50,7 @@ opal_btl_usnic_check_rts(
                 WINDOW_OPEN(endpoint));
 #endif
     }
+    OPAL_THREAD_UNLOCK(&btl_usnic_endpoint_ready_lock);
 }
 
 /*
@@ -197,7 +199,9 @@ opal_btl_usnic_endpoint_send_segment(
         frag->sf_base.uf_remote_seg[0].seg_addr.pval;
 
     /* piggy-back an ACK if needed */
+    OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
     opal_btl_usnic_piggyback_ack(endpoint, sseg);
+    OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
 
 #if MSGDEBUG1
     {
@@ -251,8 +255,11 @@ opal_btl_usnic_endpoint_send_segment(
 
     /* If we have room in the sender's window, we also have room in
        endpoint hotel */
+    OPAL_THREAD_LOCK(&btl_usnic_hotel_lock);
     opal_hotel_checkin_with_res(&endpoint->endpoint_hotel, sseg,
             &sseg->ss_hotel_room);
+    OPAL_THREAD_UNLOCK(&btl_usnic_hotel_lock);
+
 }
 
 /*
@@ -264,7 +271,7 @@ opal_btl_usnic_endpoint_enqueue_frag(
     opal_btl_usnic_endpoint_t *endpoint,
     opal_btl_usnic_send_frag_t *frag)
 {
-#if MSGDEBUG1
+#if MSGDEBUG1 
     opal_output(0, "enq_frag: frag=%p, endpoint=%p, %s, len=%lu\n",
             (void*)frag, (void*)endpoint,
             usnic_frag_type(frag->sf_base.uf_type),

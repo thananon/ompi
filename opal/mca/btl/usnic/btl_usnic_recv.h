@@ -49,7 +49,6 @@ opal_btl_usnic_post_recv_list(opal_btl_usnic_channel_t *channel)
         }
     }
     channel->repost_recv_head = NULL;
-
     return 0;
 }
 
@@ -109,7 +108,9 @@ opal_btl_usnic_update_window(
     opal_output(0, "ep: %p, ack_needed = %s\n", (void*)endpoint, endpoint->endpoint_ack_needed?"true":"false");
 #endif
     if (!endpoint->endpoint_ack_needed) {
+        OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
         opal_btl_usnic_add_to_endpoints_needing_ack(endpoint);
+        OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
     }
 
     /* give this process a chance to send something before ACKing */
@@ -157,8 +158,10 @@ opal_btl_usnic_check_rx_seq(
 #if MSGDEBUG1
         opal_output(0, "Handle piggy-packed ACK seq %"UDSEQ"\n", seg->rs_base.us_btl_header->ack_seq);
 #endif
+    OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
         opal_btl_usnic_handle_ack(endpoint,
                 seg->rs_base.us_btl_header->ack_seq);
+    OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
     }
 
     /* Do we have room in the endpoint's receiver window?
@@ -258,7 +261,9 @@ opal_btl_usnic_check_rx_seq(
 
 dup_needs_ack:
     if (!endpoint->endpoint_ack_needed) {
+        OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
         opal_btl_usnic_add_to_endpoints_needing_ack(endpoint);
+        OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
     }
     return -1;
 }

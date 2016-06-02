@@ -66,7 +66,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     char local_ip[IPV4STRADDRLEN];
     char remote_ip[IPV4STRADDRLEN];
 #endif
-
     bseg = &seg->rs_base;
 
     ++module->stats.num_total_recvs;
@@ -340,8 +339,9 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         opal_output(0, "    Received ACK for sequence number %" UDSEQ " from %s to %s\n",
                     bseg->us_btl_header->ack_seq, remote_ip, local_ip);
 #endif
+        OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
         opal_btl_usnic_handle_ack(endpoint, ack_seq);
-
+        OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
         goto repost;
     }
 
@@ -370,4 +370,5 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     /* Add recv to linked list for reposting */
     seg->rs_next = channel->repost_recv_head;
     channel->repost_recv_head = seg;
+
 }
