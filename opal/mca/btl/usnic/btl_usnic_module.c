@@ -960,10 +960,8 @@ usnic_do_resends(
         }
 
         /* restart the retrans timer */
-        OPAL_THREAD_LOCK(&btl_usnic_hotel_lock);
         ret = opal_hotel_checkin(&endpoint->endpoint_hotel,
                 sseg, &sseg->ss_hotel_room);
-        OPAL_THREAD_UNLOCK(&btl_usnic_hotel_lock);
         if (OPAL_UNLIKELY(OPAL_SUCCESS != ret)) {
             BTL_ERROR(("hotel checkin failed\n"));
             abort();    /* should not be possible */
@@ -1172,7 +1170,6 @@ opal_btl_usnic_module_progress_sends(
          * or no more send credits, remove from send list
          */
    
-        OPAL_THREAD_LOCK(&btl_usnic_endpoint_ready_lock);
         if (opal_list_is_empty(&endpoint->endpoint_frag_send_queue) ||
             endpoint->endpoint_send_credits <= 0 ||
             !WINDOW_OPEN(endpoint)) {
@@ -1180,14 +1177,11 @@ opal_btl_usnic_module_progress_sends(
                     &endpoint->super);
             endpoint->endpoint_ready_to_send = false;
         }
-        OPAL_THREAD_UNLOCK(&btl_usnic_endpoint_ready_lock);
     }
-    OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
 
     /*
      * Handle any ACKs that need to be sent
      */
-    OPAL_THREAD_LOCK(&btl_usnic_ack_lock);
     endpoint = opal_btl_usnic_get_first_endpoint_needing_ack(module);
     while (get_send_credits(prio_channel) > 1 && endpoint != NULL) {
         opal_btl_usnic_endpoint_t *next_endpoint;
@@ -1204,7 +1198,7 @@ opal_btl_usnic_module_progress_sends(
 
         endpoint = next_endpoint;
     }
-    OPAL_THREAD_UNLOCK(&btl_usnic_ack_lock);
+    OPAL_THREAD_UNLOCK(&btl_usnic_send_lock);
 }
 
 /*

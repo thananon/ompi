@@ -57,9 +57,6 @@ BEGIN_C_DECLS
  * MPI_THREAD_MULTIPLE support
  */
 opal_recursive_mutex_t btl_usnic_send_lock;
-opal_mutex_t btl_usnic_ack_lock;
-opal_mutex_t btl_usnic_hotel_lock;
-opal_mutex_t btl_usnic_endpoint_ready_lock;
 
 
 /*
