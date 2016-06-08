@@ -90,7 +90,6 @@ opal_btl_usnic_handle_ack(
 
     /* Does this ACK have a new sequence number that we haven't
        seen before? */
-    sseg = NULL;
     for (is = endpoint->endpoint_ack_seq_rcvd + 1; SEQ_LE(is, ack_seq); ++is) {
         sseg = endpoint->endpoint_sent_segs[WINDOW_SIZE_MOD(is)];
 

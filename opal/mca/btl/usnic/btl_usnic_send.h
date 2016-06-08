@@ -253,7 +253,6 @@ opal_btl_usnic_endpoint_send_segment(
        endpoint hotel */
     opal_hotel_checkin_with_res(&endpoint->endpoint_hotel, sseg,
             &sseg->ss_hotel_room);
-
 }
 
 /*
@@ -265,7 +264,7 @@ opal_btl_usnic_endpoint_enqueue_frag(
     opal_btl_usnic_endpoint_t *endpoint,
     opal_btl_usnic_send_frag_t *frag)
 {
-#if MSGDEBUG1 
+#if MSGDEBUG1
     opal_output(0, "enq_frag: frag=%p, endpoint=%p, %s, len=%lu\n",
             (void*)frag, (void*)endpoint,
             usnic_frag_type(frag->sf_base.uf_type),

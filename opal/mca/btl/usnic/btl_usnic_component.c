@@ -86,6 +86,9 @@
 
 #define OPAL_BTL_USNIC_NUM_COMPLETIONS 500
 
+/* MPI_THREAD_MULTIPLE_SUPPORT */
+opal_recursive_mutex_t btl_usnic_send_lock;
+
 /* RNG buffer definition */
 opal_rng_buff_t opal_btl_usnic_rand_buff = {0};
 
@@ -221,6 +224,8 @@ static int usnic_component_close(void)
     /* clean up the unit test infrastructure */
     opal_btl_usnic_cleanup_tests();
 #endif
+
+    OBJ_DESTRUCT(&btl_usnic_send_lock);
 
     return OPAL_SUCCESS;
 }

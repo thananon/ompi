@@ -56,7 +56,7 @@ BEGIN_C_DECLS
 /*
  * MPI_THREAD_MULTIPLE support
  */
-opal_recursive_mutex_t btl_usnic_send_lock;
+extern opal_recursive_mutex_t btl_usnic_send_lock;
 
 
 /*
@@ -257,7 +257,7 @@ opal_btl_usnic_get_next_endpoint_needing_ack(
 static inline void
 opal_btl_usnic_remove_from_endpoints_needing_ack(
     opal_btl_usnic_endpoint_t *endpoint)
-{   
+{
     opal_list_remove_item(
             &(endpoint->endpoint_module->endpoints_that_need_acks),
             &endpoint->endpoint_ack_li);

@@ -66,6 +66,7 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     char local_ip[IPV4STRADDRLEN];
     char remote_ip[IPV4STRADDRLEN];
 #endif
+
     bseg = &seg->rs_base;
 
     ++module->stats.num_total_recvs;
@@ -370,5 +371,4 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     /* Add recv to linked list for reposting */
     seg->rs_next = channel->repost_recv_head;
     channel->repost_recv_head = seg;
-
 }
