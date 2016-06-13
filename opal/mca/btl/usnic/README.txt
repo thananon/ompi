@@ -343,7 +343,7 @@ MPI_THREAD_MULTIPLE support
 In order to make usnic btl thread-safe, the mutex locks are issued
 to protect the critical path. ie; libfabric routines, book keeping, etc.
 
-The said lock is btl_usnic_send_lock. It is a RECURSIVE lock, meaning that 
+The said lock is btl_usnic_lock. It is a RECURSIVE lock, meaning that
 the same thread can take the lock again even if it already has the lock to
 allow the callback function to post another segment right away if we know
 that the current segment is completed inline. (So we can call send in send
@@ -353,8 +353,8 @@ These two functions taking care of hotel checkin/checkout and we
 have to protect that part. So we take the mutex lock before we enter the
 function.
 
-- opal_btl_usnic_check_rts()  
-- opal_btl_usnic_handle_ack()  
+- opal_btl_usnic_check_rts()
+- opal_btl_usnic_handle_ack()
 
 We also have to protect the call to libfabric routines
 
@@ -363,7 +363,12 @@ We also have to protect the call to libfabric routines
 
 have to be protected as well.
 
+Also cclient connection checking (opal_btl_usnic_connectivity_ping) has to be
+protected. This happens only in the beginning but cclient communicate with cagent
+through opal_fd_read/write() and if two or more clients do opal_fd_write() at the
+same time, the data might be corrupt.
+
 With this concept, many functions in btl/usnic that make calls to the
-listed functions are protected by OPAL_THREAD_LOCK macro which will only 
-be active if the user specify MPI_Init_thread() with MPI_THREAD_MULTIPLE 
+listed functions are protected by OPAL_THREAD_LOCK macro which will only
+be active if the user specify MPI_Init_thread() with MPI_THREAD_MULTIPLE
 support.
