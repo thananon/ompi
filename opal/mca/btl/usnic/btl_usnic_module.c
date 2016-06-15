@@ -94,6 +94,12 @@ static int channel_addr2str(opal_btl_usnic_module_t *module, int channel,
 }
 
 
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem (mca_btl_base_module_t *btl,
+		                                                   mca_btl_base_endpoint_t *endpoint,
+		                                                   void *base, size_t size, uint32_t flags);
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle);
+
 /*
  * Loop over a block of procs sent to us in add_procs and see if we
  * want to add a proc/endpoint for them.
@@ -1316,10 +1322,17 @@ static int usnic_reg_mr(void* reg_data, void* base, size_t size,
     opal_btl_usnic_reg_t* ur = (opal_btl_usnic_reg_t*)reg;
     int rc;
     static int id = 0;
-    rc = fi_mr_reg(mod->domain, base, size, 0, 0, ++id, 0, &ur->ur_mr, NULL);
+    uint64_t access_flag = 0;
+
+    access_flag |= FI_REMOTE_WRITE | FI_REMOTE_READ;
+    rc = fi_mr_reg(mod->domain, base, size, access_flag, 0, ++id, 0, &ur->ur_mr, NULL);
+
     if (0 != rc) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
+
+    ur->handle.rkey = fi_mr_key(ur->ur_mr);
+    ur->handle.desc = fi_mr_desc(ur->ur_mr);
 
     return OPAL_SUCCESS;
 }
@@ -2435,11 +2448,11 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_seg_size = sizeof(mca_btl_base_segment_t),
 #elif BTL_VERSION == 30
         .btl_atomic_flags = 0,
-        .btl_registration_handle_size = 0,
+        .btl_registration_handle_size = sizeof(mca_btl_base_registration_handle_t),
 
         .btl_get_limit = 0,
         .btl_get_alignment = 0,
-        .btl_put_limit = 0,
+        .btl_put_limit = 1024 * 1024,
         .btl_put_alignment = 0,
 
         .btl_atomic_op = NULL,
@@ -2454,7 +2467,10 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
             /* Need to set FLAGS_SINGLE_ADD_PROCS until
                btl_recv.h:lookup_sender() can handle an incoming
                message with an unknown sender. */
-            MCA_BTL_FLAGS_SINGLE_ADD_PROCS,
+            MCA_BTL_FLAGS_SINGLE_ADD_PROCS |
+	    /* experimental */
+	    MCA_BTL_FLAGS_PUT |
+	    MCA_BTL_FLAGS_RDMA,
 
         .btl_add_procs = usnic_add_procs,
         .btl_del_procs = usnic_del_procs,
@@ -2472,6 +2488,44 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
 
         .btl_mpool = NULL,
         .btl_register_error = usnic_register_pml_err_cb,
-        .btl_ft_event = usnic_ft_event
+        .btl_ft_event = usnic_ft_event,
+
+	.btl_register_mem = mca_btl_usnic_register_mem,
+	.btl_deregister_mem = mca_btl_usnic_deregister_mem,
+
+	/* Copied from openib */
+	.btl_rndv_eager_limit = 12 * 1024,
+	.btl_rdma_pipeline_frag_size = 1024 * 1024,
+	.btl_rdma_pipeline_send_length = 1024 * 1024,
+	.btl_min_rdma_pipeline_size = 256 * 1024
     }
 };
+
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem(mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoint,
+		                                                  void *base, size_t size, uint32_t flags)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg;
+    int access_flags = flags & MCA_BTL_REG_FLAG_ACCESS_ANY;
+
+    int rc;
+    rc = module->rcache->rcache_register(module->rcache, base, size, 0, access_flags,
+		                         (mca_rcache_base_registration_t **) &reg);
+
+    if(OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+        return NULL;
+    }
+
+    return &reg->handle;
+}
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg =
+        (opal_btl_usnic_reg_t *)((intptr_t) handle - offsetof (opal_btl_usnic_reg_t, handle));
+
+    module->rcache->rcache_deregister (module->rcache, &reg->base);
+
+    return OPAL_SUCCESS;
+}

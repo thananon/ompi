@@ -33,6 +33,7 @@
 #include <rdma/fi_endpoint.h>
 #include <rdma/fi_errno.h>
 #include <rdma/fi_ext_usnic.h>
+#include <rdma/fi_rma.h>
 
 #include "opal/class/opal_pointer_array.h"
 
