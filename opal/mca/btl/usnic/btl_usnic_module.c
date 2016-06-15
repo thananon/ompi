@@ -70,6 +70,12 @@ static void finalize_one_channel(opal_btl_usnic_module_t *module,
                                  struct opal_btl_usnic_channel_t *channel);
 
 
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem (mca_btl_base_module_t *btl,
+		                                                   mca_btl_base_endpoint_t *endpoint,
+		                                                   void *base, size_t size, uint32_t flags);
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle);
+
 /*
  * Loop over a block of procs sent to us in add_procs and see if we
  * want to add a proc/endpoint for them.
@@ -2478,6 +2484,38 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
 
         .btl_mpool = NULL,
         .btl_register_error = usnic_register_pml_err_cb,
-        .btl_ft_event = usnic_ft_event
+        .btl_ft_event = usnic_ft_event,
+
+	.btl_register_mem = mca_btl_usnic_register_mem,
+	.btl_deregister_mem = mca_btl_usnic_deregister_mem
     }
 };
+
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem(mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoint,
+		                                                  void *base, size_t size, uint32_t flags)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg;
+    int access_flags = flags & MCA_BTL_REG_FLAG_ACCESS_ANY;
+
+    int rc;
+    rc = module->rcache->rcache_register(module->rcache, base, size, 0, access_flags,
+		                         (mca_rcache_base_registration_t **) &reg);
+
+    if(OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+        return NULL;
+    }
+
+    return &reg->handle;
+}
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg =
+        (opal_btl_usnic_reg_t *)((intptr_t) handle - offsetof (opal_btl_usnic_reg_t, handle));
+
+    module->rcache->rcache_deregister (module->rcache, &reg->base);
+
+    return OPAL_SUCCESS;
+}

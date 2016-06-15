@@ -107,6 +107,7 @@ struct mca_btl_base_registration_handle_t {
 typedef struct opal_btl_usnic_reg_t {
     mca_mpool_base_registration_t base;
     struct fid_mr *ur_mr;
+    mca_btl_base_registration_handle_t handle;
 } opal_btl_usnic_reg_t;
 
 
