@@ -68,7 +68,8 @@ usnic_frag_type(opal_btl_usnic_frag_type_t t)
 typedef enum {
     OPAL_BTL_USNIC_SEG_FRAG,
     OPAL_BTL_USNIC_SEG_CHUNK,
-    OPAL_BTL_USNIC_SEG_RECV
+    OPAL_BTL_USNIC_SEG_RECV,
+    OPAL_BTL_USNIC_SEG_PUT
 } opal_btl_usnic_seg_type_t;
 
 static inline const char *
@@ -78,6 +79,7 @@ usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
     case OPAL_BTL_USNIC_SEG_FRAG:  return "FRAG";
     case OPAL_BTL_USNIC_SEG_CHUNK: return "CHUNK";
     case OPAL_BTL_USNIC_SEG_RECV:  return "RECV";
+    case OPAL_BTL_USNIC_SEG_PUT:   return "PUT";
     default:                       return "unknown";
     }
 }
@@ -95,8 +97,9 @@ usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
  */
 struct mca_btl_base_registration_handle_t {
     /* Maybe we'll need fields like this */
-    uint32_t lkey;
-    uint32_t rkey;
+    uint64_t rkey;
+    void *desc;
+
 };
 
 /*
@@ -105,6 +108,7 @@ struct mca_btl_base_registration_handle_t {
 typedef struct opal_btl_usnic_reg_t {
     mca_mpool_base_registration_t base;
     struct fid_mr *ur_mr;
+    mca_btl_base_registration_handle_t handle;
 } opal_btl_usnic_reg_t;
 
 
@@ -216,6 +220,18 @@ typedef struct opal_btl_usnic_send_segment_t {
     uint32_t ss_send_posted;
 
 } opal_btl_usnic_send_segment_t;
+
+typedef struct opal_btl_usnic_put_segment_t {
+    opal_btl_usnic_segment_t ps_base;
+    opal_btl_usnic_endpoint_t *ps_endpoint;
+
+    mca_btl_base_descriptor_t ps_desc;
+    mca_btl_base_registration_handle_t *local_handle;
+
+    void *local_address;
+    size_t ps_len;
+
+} opal_btl_usnic_put_segment_t;
 
 typedef opal_btl_usnic_send_segment_t opal_btl_usnic_frag_segment_t;
 typedef opal_btl_usnic_send_segment_t opal_btl_usnic_chunk_segment_t;

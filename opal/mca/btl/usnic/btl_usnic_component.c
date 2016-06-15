@@ -83,6 +83,7 @@
 #include "btl_usnic_recv.h"
 #include "btl_usnic_proc.h"
 #include "btl_usnic_test.h"
+#include "btl_usnic_rdma.h"
 
 #define OPAL_BTL_USNIC_NUM_COMPLETIONS 500
 
@@ -615,6 +616,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     struct fi_info hints = {0};
     struct fi_ep_attr ep_attr = {0};
     struct fi_fabric_attr fabric_attr = {0};
+    struct fi_domain_attr domain_attr = {0};
     struct fid_fabric *fabric;
     struct fid_domain *domain;
     int ret;
@@ -644,9 +646,11 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     /* Ask usnic for the provider user requested with EP_RDM */
     fabric_attr.prov_name = mca_btl_usnic_component.libfabric_provider;
     ep_attr.type = FI_EP_RDM;
+    domain_attr.mr_mode = FI_MR_BASIC;
 
     hints.caps = FI_MSG;
     hints.mode = FI_LOCAL_MR | FI_MSG_PREFIX;
+    hints.domain_attr = &domain_attr;
     hints.addr_format = FI_SOCKADDR;
     hints.ep_attr = &ep_attr;
     hints.fabric_attr = &fabric_attr;
@@ -1167,9 +1171,11 @@ static int usnic_handle_completion(
 {
     opal_btl_usnic_segment_t* seg;
     opal_btl_usnic_recv_segment_t* rseg;
+    opal_btl_usnic_put_segment_t* pseg;
 
     seg = (opal_btl_usnic_segment_t*)completion->op_context;
     rseg = (opal_btl_usnic_recv_segment_t*)seg;
+    pseg = (opal_btl_usnic_put_segment_t*)seg;
 
     /* Make the completion be Valgrind-defined */
     opal_memchecker_base_mem_defined(seg, sizeof(*seg));
@@ -1195,6 +1201,10 @@ static int usnic_handle_completion(
     case OPAL_BTL_USNIC_SEG_RECV:
         opal_btl_usnic_recv(module, rseg, channel);
         break;
+
+    case OPAL_BTL_USNIC_SEG_PUT:
+	opal_btl_usnic_put_complete(module, pseg);
+	break;
 
     default:
         BTL_ERROR(("Unhandled completion segment type %d", seg->us_type));
