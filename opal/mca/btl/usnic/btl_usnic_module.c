@@ -2451,7 +2451,7 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
 
         .btl_get_limit = 0,
         .btl_get_alignment = 0,
-        .btl_put_limit = 0,
+        .btl_put_limit = 1024 * 1024,
         .btl_put_alignment = 0,
 
         .btl_atomic_op = NULL,
@@ -2466,7 +2466,10 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
             /* Need to set FLAGS_SINGLE_ADD_PROCS until
                btl_recv.h:lookup_sender() can handle an incoming
                message with an unknown sender. */
-            MCA_BTL_FLAGS_SINGLE_ADD_PROCS,
+            MCA_BTL_FLAGS_SINGLE_ADD_PROCS |
+	    /* experimental */
+	    MCA_BTL_FLAGS_PUT |
+	    MCA_BTL_FLAGS_RDMA,
 
         .btl_add_procs = usnic_add_procs,
         .btl_del_procs = usnic_del_procs,
@@ -2487,7 +2490,13 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_ft_event = usnic_ft_event,
 
 	.btl_register_mem = mca_btl_usnic_register_mem,
-	.btl_deregister_mem = mca_btl_usnic_deregister_mem
+	.btl_deregister_mem = mca_btl_usnic_deregister_mem,
+
+	/* Copied from openib */
+	.btl_rndv_eager_limit = 12 * 1024,
+	.btl_rdma_pipeline_frag_size = 1024 * 1024,
+	.btl_rdma_pipeline_send_length = 1024 * 1024,
+	.btl_min_rdma_pipeline_size = 256 * 1024
     }
 };
 
