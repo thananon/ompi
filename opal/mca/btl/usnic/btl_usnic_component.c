@@ -1170,13 +1170,7 @@ static int usnic_handle_completion(
     /* Handle work completions */
     switch(seg->us_type) {
 
-    /**** Send ACK completions ****/
-    case OPAL_BTL_USNIC_SEG_ACK:
-        opal_btl_usnic_ack_complete(module,
-                (opal_btl_usnic_ack_segment_t *)seg);
-        break;
-
-    /**** Send of frag segment completion ****/
+   /**** Send of frag segment completion ****/
     case OPAL_BTL_USNIC_SEG_FRAG:
         opal_btl_usnic_frag_send_complete(module,
                 (opal_btl_usnic_frag_segment_t*)seg);

@@ -79,20 +79,7 @@ static void endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     memset(endpoint->endpoint_rcvd_segs, 0,
            sizeof(endpoint->endpoint_rcvd_segs));
 
-    /*
-     * Make a new OPAL hotel for this module
-     * "hotel" is a construct used for triggering segment retransmission
-     * due to timeout
-     */
-    OBJ_CONSTRUCT(&endpoint->endpoint_hotel, opal_hotel_t);
-    opal_hotel_init(&endpoint->endpoint_hotel,
-                    WINDOW_SIZE,
-                    opal_sync_event_base,
-                    mca_btl_usnic_component.retrans_timeout,
-                    0,
-                    opal_btl_usnic_ack_timeout);
-
-    /* Setup this endpoint's list links */
+     /* Setup this endpoint's list links */
     OBJ_CONSTRUCT(&(endpoint->endpoint_ack_li), opal_list_item_t);
     OBJ_CONSTRUCT(&(endpoint->endpoint_endpoint_li), opal_list_item_t);
     endpoint->endpoint_ack_needed = false;
@@ -172,6 +159,4 @@ opal_btl_usnic_flush_endpoint(
         opal_btl_usnic_send_frag_return_cond(endpoint->endpoint_module, frag);
     }
 
-    /* Now, ACK everything that is pending */
-    opal_btl_usnic_handle_ack(endpoint, endpoint->endpoint_next_seq_to_send-1);
 }
