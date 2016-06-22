@@ -60,7 +60,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     opal_btl_usnic_endpoint_t *endpoint;
     opal_btl_usnic_btl_chunk_header_t *chunk_hdr;
     opal_btl_usnic_btl_header_t *hdr;
-    uint32_t window_index;
     int rc;
 #if MSGDEBUG1
     char local_ip[IPV4STRADDRLEN];
@@ -117,14 +116,10 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
                     (void*) endpoint, hdr->pkt_seq, hdr->payload_len);
 #if 0
 
-        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ " from %s to %s: GOOD! (rel seq %d, lowest seq %" UDSEQ ", highest seq: %" UDSEQ ", rwstart %d) seg %p, module %p\n",
+        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
                     (void*) endpoint,
                     seg->rs_base.us_btl_header->pkt_seq,
                     remote_ip, local_ip,
-                    window_index,
-                    endpoint->endpoint_next_contig_seq_to_recv,
-                    endpoint->endpoint_highest_seq_rcvd,
-                    endpoint->endpoint_rfstart,
                     (void*) seg, (void*) module);
         if (hdr->put_addr != NULL) {
             opal_output(0, "  put_addr = %p\n",
@@ -173,22 +168,12 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         int frag_index;
         opal_btl_usnic_rx_frag_info_t *fip;
 
-        /* Is incoming sequence # ok? */
-        if (OPAL_UNLIKELY(opal_btl_usnic_check_rx_seq(endpoint, seg,
-                        &window_index) != 0)) {
-            goto repost;
-        }
-
 #if MSGDEBUG1
-        opal_output(0, "<-- Received CHUNK fid %d ep %p, seq %" UDSEQ " from %s to %s: GOOD! (rel seq %d, lowest seq %" UDSEQ ", highest seq: %" UDSEQ ", rwstart %d) seg %p, module %p\n",
+        opal_output(0, "<-- Received CHUNK fid %d ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
                     seg->rs_base.us_btl_chunk_header->ch_frag_id,
                     (void*) endpoint,
                     seg->rs_base.us_btl_chunk_header->ch_hdr.pkt_seq,
                     remote_ip, local_ip,
-                    window_index,
-                    endpoint->endpoint_next_contig_seq_to_recv,
-                    endpoint->endpoint_highest_seq_rcvd,
-                    endpoint->endpoint_rfstart,
                     (void*) seg, (void*) module);
 #endif
 
@@ -271,9 +256,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         memcpy(fip->rfi_data + chunk_hdr->ch_frag_offset, (char *)(chunk_hdr+1),
                 chunk_hdr->ch_hdr.payload_len);
 
-        /* update sliding window */
-        opal_btl_usnic_update_window(endpoint, window_index);
-
         fip->rfi_bytes_left -= chunk_hdr->ch_hdr.payload_len;
         if (0 == fip->rfi_bytes_left) {
             mca_btl_base_descriptor_t desc;
@@ -321,28 +303,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
             /* force immediate ACK */
             endpoint->endpoint_acktime = 0;
         }
-        goto repost;
-    }
-
-    /***********************************************************************/
-    /* Frag is an incoming ACK */
-    else if (OPAL_LIKELY(OPAL_BTL_USNIC_PAYLOAD_TYPE_ACK ==
-                         bseg->us_btl_header->payload_type)) {
-        opal_btl_usnic_seq_t ack_seq;
-
-        /* sequence being ACKed */
-        ack_seq = bseg->us_btl_header->ack_seq;
-
-        /* Stats */
-        ++module->stats.num_ack_recvs;
-
-#if MSGDEBUG1
-        opal_output(0, "    Received ACK for sequence number %" UDSEQ " from %s to %s\n",
-                    bseg->us_btl_header->ack_seq, remote_ip, local_ip);
-#endif
-        OPAL_THREAD_LOCK(&btl_usnic_lock);
-        opal_btl_usnic_handle_ack(endpoint, ack_seq);
-        OPAL_THREAD_UNLOCK(&btl_usnic_lock);
         goto repost;
     }
 

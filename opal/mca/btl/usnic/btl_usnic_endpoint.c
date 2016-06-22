@@ -73,26 +73,7 @@ static void endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     endpoint->endpoint_ready_to_send = 0;
     endpoint->endpoint_ack_needed = false;
 
-    /* clear sent/received sequence number array */
-    memset(endpoint->endpoint_sent_segs, 0,
-           sizeof(endpoint->endpoint_sent_segs));
-    memset(endpoint->endpoint_rcvd_segs, 0,
-           sizeof(endpoint->endpoint_rcvd_segs));
-
-    /*
-     * Make a new OPAL hotel for this module
-     * "hotel" is a construct used for triggering segment retransmission
-     * due to timeout
-     */
-    OBJ_CONSTRUCT(&endpoint->endpoint_hotel, opal_hotel_t);
-    opal_hotel_init(&endpoint->endpoint_hotel,
-                    WINDOW_SIZE,
-                    opal_sync_event_base,
-                    mca_btl_usnic_component.retrans_timeout,
-                    0,
-                    opal_btl_usnic_ack_timeout);
-
-    /* Setup this endpoint's list links */
+     /* Setup this endpoint's list links */
     OBJ_CONSTRUCT(&(endpoint->endpoint_ack_li), opal_list_item_t);
     OBJ_CONSTRUCT(&(endpoint->endpoint_endpoint_li), opal_list_item_t);
     endpoint->endpoint_ack_needed = false;
@@ -127,10 +108,6 @@ static void endpoint_destruct(mca_btl_base_endpoint_t* endpoint)
     }
     opal_mutex_unlock(&module->all_endpoints_lock);
     OBJ_DESTRUCT(&(endpoint->endpoint_endpoint_li));
-
-    if (endpoint->endpoint_hotel.rooms != NULL) {
-        OBJ_DESTRUCT(&(endpoint->endpoint_hotel));
-    }
 
     OBJ_DESTRUCT(&endpoint->endpoint_frag_send_queue);
 
@@ -167,11 +144,8 @@ opal_btl_usnic_flush_endpoint(
         /* _cond still needs to check ownership, but make sure the
          * fragment is marked as done.
          */
-        frag->sf_ack_bytes_left = 0;
         frag->sf_seg_post_cnt = 0;
         opal_btl_usnic_send_frag_return_cond(endpoint->endpoint_module, frag);
     }
 
-    /* Now, ACK everything that is pending */
-    opal_btl_usnic_handle_ack(endpoint, endpoint->endpoint_next_seq_to_send-1);
 }
