@@ -282,5 +282,6 @@ void opal_btl_usnic_component_debug(void);
  */
 void opal_btl_usnic_connectivity_map(void);
 
+#define MAX_EP_MSG_SIZE ( 1024 * 1024 ) + 64
 END_C_DECLS
 #endif

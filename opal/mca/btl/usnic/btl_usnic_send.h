@@ -34,19 +34,17 @@ opal_btl_usnic_check_rts(
      */
     if (!endpoint->endpoint_ready_to_send &&
         !opal_list_is_empty(&endpoint->endpoint_frag_send_queue) &&
-         endpoint->endpoint_send_credits > 0 &&
-         WINDOW_OPEN(endpoint)) {
+         endpoint->endpoint_send_credits > 0) {
         opal_list_append(&endpoint->endpoint_module->endpoints_with_sends,
                 &endpoint->super);
         endpoint->endpoint_ready_to_send = true;
 #if MSGDEBUG1
         opal_output(0, "make endpoint %p RTS\n", (void*)endpoint);
     } else {
-        opal_output(0, "rts:%d empty:%d cred:%d open%d\n",
+        opal_output(0, "rts:%d empty:%d cred:%d \n",
                 endpoint->endpoint_ready_to_send,
                 opal_list_is_empty(&endpoint->endpoint_frag_send_queue),
-                endpoint->endpoint_send_credits,
-                WINDOW_OPEN(endpoint));
+                endpoint->endpoint_send_credits);
 #endif
     }
 }
@@ -166,46 +164,13 @@ opal_btl_usnic_endpoint_send_segment(
 {
     opal_btl_usnic_send_frag_t *frag;
     opal_btl_usnic_endpoint_t *endpoint;
-    uint16_t sfi;
 
     frag = sseg->ss_parent_frag;
     endpoint = frag->sf_endpoint;
 
-    /* Do we have room in the endpoint's sender window?
-
-       Sender window:
-
-                       |-------- WINDOW_SIZE ----------|
-                      +---------------------------------+
-                      |         next_seq_to_send        |
-                      |     somewhere in this range     |
-                     ^+---------------------------------+
-                     |
-                     +-- ack_seq_rcvd: one less than the window left edge
-
-       Assuming that next_seq_to_send is > ack_seq_rcvd (verified
-       by assert), then the good condition to send is:
-
-            next_seq_to_send <= ack_seq_rcvd + WINDOW_SIZE
-
-       And therefore the bad condition is
-
-            next_seq_to_send > ack_seq_rcvd + WINDOW_SIZE
-    */
-    assert(SEQ_GT(endpoint->endpoint_next_seq_to_send,
-                  endpoint->endpoint_ack_seq_rcvd));
-    assert(WINDOW_OPEN(endpoint));
-
-    /* Assign sequence number and increment */
-    sseg->ss_base.us_btl_header->pkt_seq =
-        endpoint->endpoint_next_seq_to_send++;
-
     /* Fill in remote address to indicate PUT or not */
     sseg->ss_base.us_btl_header->put_addr =
         frag->sf_base.uf_remote_seg[0].seg_addr.pval;
-
-    /* piggy-back an ACK if needed */
-    opal_btl_usnic_piggyback_ack(endpoint, sseg);
 
 #if MSGDEBUG1
     {
@@ -238,15 +203,6 @@ opal_btl_usnic_endpoint_send_segment(
     /* do the actual send */
     opal_btl_usnic_post_segment(module, endpoint, sseg);
 
-    /* Stash this segment in an array on the endpoint that is the same
-       length as the sender's window (i.e., WINDOW_SIZE) until it
-       receives its ACK.  To find a unique slot in this array, use
-       (seq % WINDOW_SIZE). */
-    sfi = WINDOW_SIZE_MOD(sseg->ss_base.us_btl_header->pkt_seq);
-    assert(NULL == endpoint->endpoint_sent_segs[sfi]);
-    endpoint->endpoint_sent_segs[sfi] = sseg;
-    sseg->ss_ack_pending = true;
-
     /* bookkeeping */
     --endpoint->endpoint_send_credits;
 
@@ -258,10 +214,6 @@ opal_btl_usnic_endpoint_send_segment(
         ++module->stats.num_frag_sends;
     }
 
-    /* If we have room in the sender's window, we also have room in
-       endpoint hotel */
-    opal_hotel_checkin_with_res(&endpoint->endpoint_hotel, sseg,
-            &sseg->ss_hotel_room);
 }
 
 /*

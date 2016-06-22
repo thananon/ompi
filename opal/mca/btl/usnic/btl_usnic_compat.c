@@ -621,7 +621,6 @@ int opal_btl_usnic_put(
     frag = (opal_btl_usnic_send_frag_t *)desc;
 
     opal_btl_usnic_compute_sf_size(frag);
-    frag->sf_ack_bytes_left = frag->sf_size;
 
 #if MSGDEBUG2
     opal_output(0, "usnic_put, frag=%p, size=%d\n", (void *)frag,
@@ -793,7 +792,6 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
 
     sfrag->sf_endpoint = endpoint;
     sfrag->sf_size = size;
-    sfrag->sf_ack_bytes_left = size;
 
     opal_btl_usnic_frag_t *frag;
     frag = &sfrag->sf_base;

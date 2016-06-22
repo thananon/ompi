@@ -44,16 +44,11 @@ struct opal_btl_usnic_send_segment_t;
  */
 #define WINDOW_SIZE 4096
 #define WINDOW_SIZE_MOD(a) (((a) & (WINDOW_SIZE - 1)))
-#define WINDOW_OPEN(E) (SEQ_LT((E)->endpoint_next_seq_to_send, \
-        ((E)->endpoint_ack_seq_rcvd + WINDOW_SIZE)))
-#define WINDOW_EMPTY(E) ((E)->endpoint_ack_seq_rcvd == \
-        ((E)->endpoint_next_seq_to_send-1))
 
 /*
  * Returns true when an endpoint has nothing left to send
  */
-#define ENDPOINT_DRAINED(E) (WINDOW_EMPTY(E) && \
-        opal_list_is_empty(&(E)->endpoint_frag_send_queue))
+#define ENDPOINT_DRAINED(E) opal_list_is_empty(&(E)->endpoint_frag_send_queue)
 
 /*
  * Channel IDs
@@ -151,19 +146,6 @@ typedef struct mca_btl_base_endpoint_t {
     /** Receive-related data */
     struct opal_btl_usnic_rx_frag_info_t *endpoint_rx_frag_info;
 
-    /** OPAL hotel to track outstanding stends */
-    opal_hotel_t endpoint_hotel;
-
-    /** Sliding window parameters for this peer */
-    /* Values for the current proc to send to this endpoint on the
-       peer proc */
-    opal_btl_usnic_seq_t endpoint_next_seq_to_send; /* n_t */
-    opal_btl_usnic_seq_t endpoint_ack_seq_rcvd; /* n_a */
-
-    /* Table where sent segments sit while waiting for their ACKs.
-       When a segment is ACKed, it is removed from this table. */
-    struct opal_btl_usnic_send_segment_t *endpoint_sent_segs[WINDOW_SIZE];
-
     /* Values for the current proc to receive from this endpoint on
        the peer proc */
     bool endpoint_ack_needed;
@@ -172,12 +154,6 @@ typedef struct mca_btl_base_endpoint_t {
      * to delay the ACK to allow for piggybacking
      */
     uint64_t endpoint_acktime;
-
-    opal_btl_usnic_seq_t endpoint_next_contig_seq_to_recv; /* n_r */
-    opal_btl_usnic_seq_t endpoint_highest_seq_rcvd; /* n_s */
-
-    bool endpoint_rcvd_segs[WINDOW_SIZE];
-    uint32_t endpoint_rfstart;
 
     bool endpoint_connectivity_checked;
     bool endpoint_on_all_endpoints;

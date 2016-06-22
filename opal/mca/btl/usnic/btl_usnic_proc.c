@@ -752,15 +752,6 @@ opal_btl_usnic_create_endpoint(opal_btl_usnic_module_t *module,
         }
     }
 
-    /* Initialize endpoint sequence number info */
-    endpoint->endpoint_next_seq_to_send = module->local_modex.isn;
-    endpoint->endpoint_ack_seq_rcvd = endpoint->endpoint_next_seq_to_send - 1;
-    endpoint->endpoint_next_contig_seq_to_recv =
-        endpoint->endpoint_remote_modex.isn;
-    endpoint->endpoint_highest_seq_rcvd =
-        endpoint->endpoint_next_contig_seq_to_recv - 1;
-    endpoint->endpoint_rfstart = WINDOW_SIZE_MOD(endpoint->endpoint_next_contig_seq_to_recv);
-
     /* Now claim that modex slot */
     proc->proc_modex_claimed[modex_index] = true;
     MSGDEBUG1_OUT("create_endpoint: module=%p claimed endpoint=%p on proc=%p (hash=0x%" PRIx64 ")\n",

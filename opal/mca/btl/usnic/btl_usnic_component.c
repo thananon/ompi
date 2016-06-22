@@ -709,7 +709,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
 
     /* We only want providers named "usnic" that are of type EP_DGRAM */
     fabric_attr.prov_name = "usnic";
-    ep_attr.type = FI_EP_DGRAM;
+    ep_attr.type = FI_EP_RDM;
 
     hints.caps = FI_MSG;
     hints.mode = FI_LOCAL_MR | FI_MSG_PREFIX;
@@ -1207,15 +1207,6 @@ static int usnic_handle_completion(
     /* Handle work completions */
     switch(seg->us_type) {
 
-    /**** Send ACK completions ****/
-    case OPAL_BTL_USNIC_SEG_ACK:
-        ++module->stats.num_seg_ack_completions;
-        opal_btl_usnic_ack_complete(module,
-                (opal_btl_usnic_ack_segment_t *)seg);
-        break;
-
-    /**** Send of frag segment completion (i.e., the MPI message's
-          one-and-only segment has completed sending) ****/
     case OPAL_BTL_USNIC_SEG_FRAG:
         ++module->stats.num_seg_frag_completions;
         opal_btl_usnic_frag_send_complete(module,
@@ -1379,7 +1370,6 @@ static int usnic_component_progress_2(void)
 /* could take indent as a parameter instead of hard-coding it */
 static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
 {
-    int i;
     opal_btl_usnic_frag_t *frag;
     opal_btl_usnic_send_segment_t *sseg;
     struct in_addr ia;
@@ -1408,13 +1398,12 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
         switch (frag->uf_type) {
             case OPAL_BTL_USNIC_FRAG_LARGE_SEND:
                 lsfrag = (opal_btl_usnic_large_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" \n",
                         lsfrag->lsf_tag,
                         lsfrag->lsf_frag_id,
                         (unsigned long long)lsfrag->lsf_cur_offset,
                         (unsigned long long)lsfrag->lsf_base.sf_size,
-                        lsfrag->lsf_base.sf_seg_post_cnt,
-                        (unsigned long long)lsfrag->lsf_base.sf_ack_bytes_left);
+                        lsfrag->lsf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 
@@ -1433,10 +1422,9 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
 
             case OPAL_BTL_USNIC_FRAG_SMALL_SEND:
                 ssfrag = (opal_btl_usnic_small_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" \n",
                         (unsigned long long)ssfrag->ssf_base.sf_size,
-                        ssfrag->ssf_base.sf_seg_post_cnt,
-                        (unsigned long long)ssfrag->ssf_base.sf_ack_bytes_left);
+                        ssfrag->ssf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 
@@ -1457,42 +1445,6 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 opal_output(0, "%s", str);
             break;
         }
-    }
-
-    /* Now examine the hotel for this endpoint and dump any segments we find
-     * there.  Yes, this peeks at members that are technically "private", so
-     * eventually this should be done through some sort of debug or iteration
-     * interface in the hotel code. */
-    opal_output(0, "      endpoint->endpoint_sent_segs (%p):\n",
-           (void *)endpoint->endpoint_sent_segs);
-    for (i = 0; i < WINDOW_SIZE; ++i) {
-        sseg = endpoint->endpoint_sent_segs[i];
-        if (NULL != sseg) {
-            opal_output(0, "        [%d] sseg=%p %s chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
-                   i,
-                   (void *)sseg,
-                   usnic_seg_type_str(sseg->ss_base.us_type),
-                   (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
-                    "prio" : "data"),
-                   sseg->ss_hotel_room,
-                   sseg->ss_send_posted,
-                   (sseg->ss_ack_pending ? "true" : "false"));
-        }
-    }
-
-    opal_output(0, "      ack_needed=%s n_t=%"UDSEQ" n_a=%"UDSEQ" n_r=%"UDSEQ" n_s=%"UDSEQ" rfstart=%"PRIu32"\n",
-                (endpoint->endpoint_ack_needed?"true":"false"),
-                endpoint->endpoint_next_seq_to_send,
-                endpoint->endpoint_ack_seq_rcvd,
-                endpoint->endpoint_next_contig_seq_to_recv,
-                endpoint->endpoint_highest_seq_rcvd,
-                endpoint->endpoint_rfstart);
-
-    if (dump_bitvectors) {
-        opal_btl_usnic_snprintf_bool_array(str, sizeof(str),
-                                           endpoint->endpoint_rcvd_segs,
-                                           WINDOW_SIZE);
-        opal_output(0, "      rcvd_segs 0x%s", str);
     }
 }
 

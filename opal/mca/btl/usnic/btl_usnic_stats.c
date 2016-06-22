@@ -135,60 +135,11 @@ void opal_btl_usnic_print_stats(
 
              module->stats.num_crc_errors);
 
-    // Shouldn't happen, but just in case the string ever grows long
-    // enough to someday potentially get truncated by snprintf, ensure
-    // that the string is terminated.
-    str[sizeof(str) - 1] = '\0';
-
-    /* If our PML calls were 0, then show send and receive window
-       extents instead */
-    if (module->stats.pml_module_sends +
-        module->stats.pml_send_callbacks == 0) {
-        int64_t send_unacked, su_min = WINDOW_SIZE * 2, su_max = 0;
-        int64_t recv_depth, rd_min = WINDOW_SIZE * 2, rd_max = 0;
-        opal_btl_usnic_endpoint_t *endpoint;
-        opal_list_item_t *item;
-
-        rd_min = su_min = WINDOW_SIZE * 2;
-        rd_max = su_max = 0;
-
-        opal_mutex_lock(&module->all_endpoints_lock);
-        item = opal_list_get_first(&module->all_endpoints);
-        while (item != opal_list_get_end(&(module->all_endpoints))) {
-            endpoint = container_of(item, mca_btl_base_endpoint_t,
-                    endpoint_endpoint_li);
-            item = opal_list_get_next(item);
-
-            /* Number of un-acked sends (i.e., sends for which we're
-               still waiting for ACK) */
-            send_unacked =
-                SEQ_DIFF(endpoint->endpoint_next_seq_to_send,
-                         SEQ_DIFF(endpoint->endpoint_ack_seq_rcvd, 1));
-
-            if (send_unacked > su_max) su_max = send_unacked;
-            if (send_unacked < su_min) su_min = send_unacked;
-
-            /* Receive window depth (i.e., difference between highest
-               seq received and the next message we haven't ACKed
-               yet) */
-            recv_depth =
-                endpoint->endpoint_highest_seq_rcvd -
-                endpoint->endpoint_next_contig_seq_to_recv;
-            if (recv_depth > rd_max) rd_max = recv_depth;
-            if (recv_depth < rd_min) rd_min = recv_depth;
-        }
-        opal_mutex_unlock(&module->all_endpoints_lock);
-        snprintf(tmp, sizeof(tmp), "PML S:%1ld, Win!A/R:%4ld/%4ld %4ld/%4ld",
-                 module->stats.pml_module_sends,
-                 su_min, su_max,
-                 rd_min, rd_max);
-    } else {
-        snprintf(tmp, sizeof(tmp), "PML S/CB/Diff:%4lu/%4lu=%4ld",
+       snprintf(tmp, sizeof(tmp), "PML S/CB/Diff:%4lu/%4lu=%4ld",
                 module->stats.pml_module_sends,
                 module->stats.pml_send_callbacks,
                 module->stats.pml_module_sends -
                  module->stats.pml_send_callbacks);
-    }
 
     strncat(str, tmp, sizeof(str) - strlen(str) - 1);
     opal_output(0, "%s", str);

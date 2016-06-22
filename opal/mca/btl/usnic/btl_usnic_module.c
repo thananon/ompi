@@ -956,61 +956,6 @@ get_send_credits(struct opal_btl_usnic_channel_t *chan)
     return chan->credits;
 }
 
-static void
-usnic_do_resends(
-    opal_btl_usnic_module_t *module)
-{
-    opal_btl_usnic_send_segment_t *sseg;
-    opal_btl_usnic_endpoint_t *endpoint;
-    struct opal_btl_usnic_channel_t *data_channel;
-    int ret;
-
-    data_channel = &module->mod_channels[USNIC_DATA_CHANNEL];
-
-    while ((get_send_credits(data_channel) > 1) &&
-           !opal_list_is_empty(&module->pending_resend_segs)) {
-
-        /*
-         * If a segment is on the re-send list, it will not
-         * be in the retransmit hotel.  Post the segment, then check it in.
-         */
-        sseg = (opal_btl_usnic_send_segment_t *)
-            opal_list_remove_first(&module->pending_resend_segs);
-        endpoint = sseg->ss_parent_frag->sf_endpoint;
-
-        /* clobber any stale piggy-backed ACK */
-        sseg->ss_base.us_btl_header->ack_present = 0;
-
-        /* Only post this segment if not already posted */
-        if (sseg->ss_send_posted == 0) {
-
-            /* resends are always standard segments */
-            sseg->ss_channel = USNIC_DATA_CHANNEL;
-
-            /* re-send the segment (we have a send credit available) */
-            opal_btl_usnic_post_segment(module, endpoint, sseg);
-
-            /* consume a send credit for this endpoint.  May send us
-             * negative, oh well...  This is because the completion routine
-             * always increments send credits, and we must balance.
-             * Alternative is to mark this as a retrans segment and check in
-             * completion, but this ugly way avoids extra checks in the
-             * critical path.  And, really, respects the concept of send
-             * credits more.
-             */
-            --endpoint->endpoint_send_credits;
-            ++module->stats.num_resends;
-        }
-
-        /* restart the retrans timer */
-        ret = opal_hotel_checkin(&endpoint->endpoint_hotel,
-                sseg, &sseg->ss_hotel_room);
-        if (OPAL_UNLIKELY(OPAL_SUCCESS != ret)) {
-            BTL_ERROR(("hotel checkin failed\n"));
-            abort();    /* should not be possible */
-        }
-    }
-}
 
 /* Given a large send frag (which is at the head of the given endpoint's send
  * queue), generate a new segment, fill it with data, and
@@ -1119,24 +1064,9 @@ opal_btl_usnic_module_progress_sends(
     opal_btl_usnic_send_segment_t *sseg;
     opal_btl_usnic_endpoint_t *endpoint;
     struct opal_btl_usnic_channel_t *data_channel;
-    struct opal_btl_usnic_channel_t *prio_channel;
 
-    /*
-     * Post all the sends that we can
-     * resends 1st priority
-     * ACKs 2nd priority
-     * new sends 3rd
-     */
     data_channel = &module->mod_channels[USNIC_DATA_CHANNEL];
-    prio_channel = &module->mod_channels[USNIC_PRIORITY_CHANNEL];
-
-    /*
-     * Handle all the retransmits we can
-     */
     OPAL_THREAD_LOCK(&btl_usnic_lock);
-    if (OPAL_UNLIKELY(!opal_list_is_empty(&module->pending_resend_segs))) {
-        usnic_do_resends(module);
-    }
 
     /*
      * Keep sending as long as there are WQEs and something to do
@@ -1215,39 +1145,13 @@ opal_btl_usnic_module_progress_sends(
          * or no more send credits, remove from send list
          */
         if (opal_list_is_empty(&endpoint->endpoint_frag_send_queue) ||
-            endpoint->endpoint_send_credits <= 0 ||
-            !WINDOW_OPEN(endpoint)) {
-
-            opal_list_remove_item(&module->endpoints_with_sends,
-                    &endpoint->super);
-            endpoint->endpoint_ready_to_send = false;
+            endpoint->endpoint_send_credits <= 0 ) {
+                opal_list_remove_item(&module->endpoints_with_sends,
+                                      &endpoint->super);
+                endpoint->endpoint_ready_to_send = false;
         }
     }
 
-    /*
-     * Handle any ACKs that need to be sent
-     */
-    endpoint = opal_btl_usnic_get_first_endpoint_needing_ack(module);
-    while (get_send_credits(prio_channel) > 1 && endpoint != NULL) {
-        opal_btl_usnic_endpoint_t *next_endpoint;
-
-        /* get next in list */
-        next_endpoint = opal_btl_usnic_get_next_endpoint_needing_ack(endpoint);
-
-        /* Is it time to send ACK? */
-        if (endpoint->endpoint_acktime == 0 ||
-            endpoint->endpoint_acktime <= get_nsec()) {
-            if (OPAL_LIKELY(opal_btl_usnic_ack_send(module, endpoint) == OPAL_SUCCESS)) {
-                opal_btl_usnic_remove_from_endpoints_needing_ack(endpoint);
-            } else {
-                // If we fail, it means we're out of send credits on
-                // the ACK channel
-                break;
-            }
-        }
-
-        endpoint = next_endpoint;
-    }
     OPAL_THREAD_UNLOCK(&btl_usnic_lock);
 }
 
@@ -1292,7 +1196,6 @@ usnic_send(
     frag->sf_base.uf_remote_seg[0].seg_addr.pval = NULL;      /* not a PUT */
 
     opal_btl_usnic_compute_sf_size(frag);
-    frag->sf_ack_bytes_left = frag->sf_size;
 
 #if MSGDEBUG2
     opal_output(0, "usnic_send: frag=%p, endpoint=%p, tag=%d, sf_size=%d\n",
@@ -1316,16 +1219,15 @@ usnic_send(
      * then inline and fastpath it
      */
     if (frag->sf_base.uf_type == OPAL_BTL_USNIC_FRAG_SMALL_SEND &&
-            frag->sf_ack_bytes_left < module->max_tiny_payload &&
-            WINDOW_OPEN(endpoint) &&
-            (get_send_credits(&module->mod_channels[USNIC_DATA_CHANNEL]) >=
-             module->mod_channels[USNIC_DATA_CHANNEL].fastsend_wqe_thresh)) {
+            frag->sf_size < module->max_tiny_payload &&
+            (get_send_credits(&module->mod_channels[USNIC_PRIORITY_CHANNEL]) >=
+             module->mod_channels[USNIC_PRIORITY_CHANNEL].fastsend_wqe_thresh)) {
         size_t payload_len;
 
         sfrag = (opal_btl_usnic_small_send_frag_t *)frag;
         sseg = &sfrag->ssf_segment;
 
-        payload_len = frag->sf_ack_bytes_left;
+        payload_len = frag->sf_size;
         sseg->ss_base.us_btl_header->payload_len = payload_len;
 
 
@@ -2284,7 +2186,7 @@ static int init_channels(opal_btl_usnic_module_t *module)
     }
     rc = init_one_channel(module,
             USNIC_DATA_CHANNEL,
-            module->fabric_info->ep_attr->max_msg_size,
+            MAX_EP_MSG_SIZE,
             module->rd_num, module->sd_num, module->cq_num);
     if (rc != OPAL_SUCCESS) {
         goto destroy;
