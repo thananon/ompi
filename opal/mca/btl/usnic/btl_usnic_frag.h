@@ -131,7 +131,6 @@ typedef struct {
 
     /* Sliding window sequence number (echoed back in an ACK). */
     opal_btl_usnic_seq_t pkt_seq;
-    opal_btl_usnic_seq_t ack_seq;       /* for piggy-backing ACKs */
 
     /* payload legnth (in bytes).  We unfortunately have to include
        this in our header because the L2 layer may artifically inflate

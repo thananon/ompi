@@ -116,14 +116,10 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
                     (void*) endpoint, hdr->pkt_seq, hdr->payload_len);
 #if 0
 
-        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ " from %s to %s: GOOD! (rel seq %d, lowest seq %" UDSEQ ", highest seq: %" UDSEQ ", rwstart %d) seg %p, module %p\n",
+        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
                     (void*) endpoint,
                     seg->rs_base.us_btl_header->pkt_seq,
                     remote_ip, local_ip,
-                    window_index,
-                    endpoint->endpoint_next_contig_seq_to_recv,
-                    endpoint->endpoint_highest_seq_rcvd,
-                    endpoint->endpoint_rfstart,
                     (void*) seg, (void*) module);
         if (hdr->put_addr != NULL) {
             opal_output(0, "  put_addr = %p\n",
@@ -173,14 +169,11 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         opal_btl_usnic_rx_frag_info_t *fip;
 
 #if MSGDEBUG1
-        opal_output(0, "<-- Received CHUNK fid %d ep %p, seq %" UDSEQ " from %s to %s: GOOD! (lowest seq %" UDSEQ ", highest seq: %" UDSEQ ", rwstart %d) seg %p, module %p\n",
+        opal_output(0, "<-- Received CHUNK fid %d ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
                     seg->rs_base.us_btl_chunk_header->ch_frag_id,
                     (void*) endpoint,
                     seg->rs_base.us_btl_chunk_header->ch_hdr.pkt_seq,
                     remote_ip, local_ip,
-                    endpoint->endpoint_next_contig_seq_to_recv,
-                    endpoint->endpoint_highest_seq_rcvd,
-                    endpoint->endpoint_rfstart,
                     (void*) seg, (void*) module);
 #endif
 

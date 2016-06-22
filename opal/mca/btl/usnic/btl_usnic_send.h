@@ -156,14 +156,9 @@ opal_btl_usnic_endpoint_send_segment(
 {
     opal_btl_usnic_send_frag_t *frag;
     opal_btl_usnic_endpoint_t *endpoint;
-    uint16_t sfi;
 
     frag = sseg->ss_parent_frag;
     endpoint = frag->sf_endpoint;
-
-    /* Assign sequence number and increment */
-    sseg->ss_base.us_btl_header->pkt_seq =
-        endpoint->endpoint_next_seq_to_send++;
 
     /* Fill in remote address to indicate PUT or not */
     sseg->ss_base.us_btl_header->put_addr =
@@ -199,13 +194,6 @@ opal_btl_usnic_endpoint_send_segment(
 
     /* do the actual send */
     opal_btl_usnic_post_segment(module, endpoint, sseg);
-
-    /* Track this header by stashing in an array on the endpoint that
-       is the same length as the sender's window (i.e., WINDOW_SIZE).
-       To find a unique slot in this array, use (seq % WINDOW_SIZE).
-     */
-    sfi = WINDOW_SIZE_MOD(sseg->ss_base.us_btl_header->pkt_seq);
-    endpoint->endpoint_sent_segs[sfi] = sseg;
 
     /* bookkeeping */
     --endpoint->endpoint_send_credits;

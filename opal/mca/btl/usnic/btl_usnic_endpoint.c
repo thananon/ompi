@@ -73,12 +73,6 @@ static void endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     endpoint->endpoint_ready_to_send = 0;
     endpoint->endpoint_ack_needed = false;
 
-    /* clear sent/received sequence number array */
-    memset(endpoint->endpoint_sent_segs, 0,
-           sizeof(endpoint->endpoint_sent_segs));
-    memset(endpoint->endpoint_rcvd_segs, 0,
-           sizeof(endpoint->endpoint_rcvd_segs));
-
      /* Setup this endpoint's list links */
     OBJ_CONSTRUCT(&(endpoint->endpoint_ack_li), opal_list_item_t);
     OBJ_CONSTRUCT(&(endpoint->endpoint_endpoint_li), opal_list_item_t);
@@ -114,10 +108,6 @@ static void endpoint_destruct(mca_btl_base_endpoint_t* endpoint)
     }
     opal_mutex_unlock(&module->all_endpoints_lock);
     OBJ_DESTRUCT(&(endpoint->endpoint_endpoint_li));
-
-    if (endpoint->endpoint_hotel.rooms != NULL) {
-        OBJ_DESTRUCT(&(endpoint->endpoint_hotel));
-    }
 
     OBJ_DESTRUCT(&endpoint->endpoint_frag_send_queue);
 

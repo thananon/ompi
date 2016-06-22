@@ -1331,7 +1331,6 @@ static int usnic_component_progress_2(void)
 /* could take indent as a parameter instead of hard-coding it */
 static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
 {
-    int i;
     opal_btl_usnic_frag_t *frag;
     opal_btl_usnic_send_segment_t *sseg;
     struct in_addr ia;
@@ -1409,42 +1408,6 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 opal_output(0, "%s", str);
             break;
         }
-    }
-
-    /* Now examine the hotel for this endpoint and dump any segments we find
-     * there.  Yes, this peeks at members that are technically "private", so
-     * eventually this should be done through some sort of debug or iteration
-     * interface in the hotel code. */
-    opal_output(0, "      endpoint->endpoint_sent_segs (%p):\n",
-           (void *)endpoint->endpoint_sent_segs);
-    for (i = 0; i < WINDOW_SIZE; ++i) {
-        sseg = endpoint->endpoint_sent_segs[i];
-        if (NULL != sseg) {
-            opal_output(0, "        [%d] sseg=%p %s chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
-                   i,
-                   (void *)sseg,
-                   usnic_seg_type_str(sseg->ss_base.us_type),
-                   (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
-                    "prio" : "data"),
-                   sseg->ss_hotel_room,
-                   sseg->ss_send_posted,
-                   (sseg->ss_ack_pending ? "true" : "false"));
-        }
-    }
-
-    opal_output(0, "      ack_needed=%s n_t=%"UDSEQ" n_a=%"UDSEQ" n_r=%"UDSEQ" n_s=%"UDSEQ" rfstart=%"PRIu32"\n",
-                (endpoint->endpoint_ack_needed?"true":"false"),
-                endpoint->endpoint_next_seq_to_send,
-                endpoint->endpoint_ack_seq_rcvd,
-                endpoint->endpoint_next_contig_seq_to_recv,
-                endpoint->endpoint_highest_seq_rcvd,
-                endpoint->endpoint_rfstart);
-
-    if (dump_bitvectors) {
-        opal_btl_usnic_snprintf_bool_array(str, sizeof(str),
-                                           endpoint->endpoint_rcvd_segs,
-                                           WINDOW_SIZE);
-        opal_output(0, "      rcvd_segs 0x%s", str);
     }
 }
 

@@ -101,10 +101,7 @@ opal_btl_usnic_recv_fast(opal_btl_usnic_module_t *module,
 {
     opal_btl_usnic_segment_t *bseg;
     mca_btl_active_message_callback_t* reg;
-    opal_btl_usnic_seq_t seq;
     opal_btl_usnic_endpoint_t *endpoint;
-    int delta;
-    int i;
 
     /* Make the whole payload Valgrind defined */
     opal_memchecker_base_mem_defined(seg->rs_protocol_header, seg->rs_len);
@@ -128,18 +125,6 @@ opal_btl_usnic_dump_hex(bseg->us_btl_header, bseg->us_btl_header->payload_len + 
                 bseg->us_btl_header->payload_type) &&
             seg->rs_base.us_btl_header->put_addr == NULL) {
 
-        seq = seg->rs_base.us_btl_header->pkt_seq;
-        delta = SEQ_DIFF(seq, endpoint->endpoint_next_contig_seq_to_recv);
-        if (delta < 0 || delta >= WINDOW_SIZE) {
-            goto drop;
-        }
-
-        i = seq - endpoint->endpoint_next_contig_seq_to_recv;
-        i = WINDOW_SIZE_MOD(i + endpoint->endpoint_rfstart);
-        if (endpoint->endpoint_rcvd_segs[i]) {
-            goto drop;
-        }
-
         /* Pass this segment up to the PML.
          * Be sure to get the payload length from the BTL header because
          * the L2 layer may artificially inflate (or otherwise change)
@@ -150,8 +135,6 @@ opal_btl_usnic_dump_hex(bseg->us_btl_header, bseg->us_btl_header->payload_len + 
         seg->rs_segment.seg_len = bseg->us_btl_header->payload_len;
         reg->cbfunc(&module->super, bseg->us_btl_header->tag,
                     &seg->rs_desc, reg->cbdata);
-
-drop:
         channel->chan_deferred_recv = seg;
     }
 
