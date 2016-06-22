@@ -2161,7 +2161,7 @@ static int init_channels(opal_btl_usnic_module_t *module)
     }
     rc = init_one_channel(module,
             USNIC_DATA_CHANNEL,
-            module->fabric_info->ep_attr->max_msg_size,
+            MAX_EP_MSG_SIZE,
             module->rd_num, module->sd_num);
     if (rc != OPAL_SUCCESS) {
         goto destroy;

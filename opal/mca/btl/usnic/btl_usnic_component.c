@@ -638,7 +638,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
 
     /* We only want providers named "usnic that are of type EP_DGRAM */
     fabric_attr.prov_name = "usnic";
-    ep_attr.type = FI_EP_DGRAM;
+    ep_attr.type = FI_EP_RDM;
 
     hints.caps = FI_MSG;
     hints.mode = FI_LOCAL_MR | FI_MSG_PREFIX;

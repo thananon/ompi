@@ -25,7 +25,7 @@ opal_btl_usnic_post_recv_list(opal_btl_usnic_channel_t *channel)
 {
     struct iovec iov;
     struct fi_msg msg;
-    uint64_t flag;
+    uint64_t flag = 0;
     opal_btl_usnic_recv_segment_t *rseg;
     int rc;
 
@@ -37,11 +37,6 @@ opal_btl_usnic_post_recv_list(opal_btl_usnic_channel_t *channel)
         iov.iov_len = rseg->rs_len;
 
         ++channel->rx_post_cnt;
-        if (OPAL_UNLIKELY((channel->rx_post_cnt & 15) == 0)) {
-            flag = 0;
-        } else {
-            flag = FI_MORE;
-        }
 
         rc = fi_recvmsg(channel->ep, &msg, flag);
         if (0 != rc) {
