@@ -69,7 +69,7 @@ typedef struct opal_btl_usnic_modex_t {
     /* Stored in host order */
     uint32_t connectivity_udp_port;
     uint32_t link_speed_mbps;
-    uint16_t max_msg_size;
+    uint32_t max_msg_size;
     opal_btl_usnic_seq_t isn;
     uint32_t protocol;
 } opal_btl_usnic_modex_t;

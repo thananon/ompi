@@ -109,6 +109,9 @@ enum {
 
 #define CONNECTIVITY_NODENAME_LEN 128
 #define CONNECTIVITY_IFNAME_LEN 32
+#define NETWORK_MTU 1500
+#define NETWORK_HEADER 48
+#define MAX_PING_SIZE (NETWORK_MTU - NETWORK_HEADER)
 
 /*
  * Unix domain socket name
@@ -282,7 +285,8 @@ opal_btl_usnic_check_connectivity(opal_btl_usnic_module_t *module,
                                   opal_btl_usnic_endpoint_t *endpoint)
 {
     if (OPAL_LIKELY(mca_btl_usnic_component.connectivity_enabled) &&
-        OPAL_UNLIKELY(!endpoint->endpoint_connectivity_checked)) {
+        OPAL_UNLIKELY(!endpoint->endpoint_connectivity_checked) &&
+	mca_btl_usnic_component.libfabric_use_usnic ) {
         opal_btl_usnic_connectivity_ping(module->local_modex.ipv4_addr,
                                          module->local_modex.connectivity_udp_port,
                                          endpoint->endpoint_remote_modex.ipv4_addr,
