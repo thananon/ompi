@@ -188,6 +188,7 @@ int opal_btl_usnic_connectivity_listen(opal_btl_usnic_module_t *module)
         .netmask = module->local_modex.netmask,
         .max_msg_size = module->local_modex.max_msg_size
     };
+
     /* Only the MPI process who is also the agent will send the
        pointer value (it doesn't make sense otherwise) */
     if (0 == opal_process_info.my_local_rank) {
@@ -254,6 +255,11 @@ int opal_btl_usnic_connectivity_ping(uint32_t src_ipv4_addr, int src_port,
         .dest_udp_port = dest_port,
         .max_msg_size = max_msg_size
     };
+
+    /* We have to limit the size of the msg to our MTU,
+     * even if libfabric returns much bigger number */
+    if(cmd.max_msg_size > NETWORK_MTU) cmd.max_msg_size = MAX_PING_SIZE;
+
     /* Ensure to NULL-terminate the passed string */
     strncpy(cmd.dest_nodename, dest_nodename, CONNECTIVITY_NODENAME_LEN - 1);
 

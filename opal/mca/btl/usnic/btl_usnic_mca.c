@@ -325,5 +325,9 @@ int opal_btl_usnic_component_register(void)
                      &mca_btl_usnic_component.connectivity_map_prefix,
                      REGSTR_EMPTY_OK, OPAL_INFO_LVL_3));
 
+    CHECK(reg_string("libfabric_provider",
+                     "Request provider from libfabric layer",
+                     "usnic", &mca_btl_usnic_component.libfabric_provider,
+                     REGSTR_MAX, OPAL_INFO_LVL_5));
     return ret;
 }

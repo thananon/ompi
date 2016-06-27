@@ -328,41 +328,46 @@ static uint64_t compute_weight(
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = proc_modex_addr->ipv4_addr;
-    err = module->usnic_av_ops->get_distance(module->av, &sin, &metric);
-    if (0 != err || (0 == err && -1 == metric)) {
-        return 0; /* no connectivity */
-    }
-    else {
-        /* Format in binary    MSB                             LSB
-         * most sig. 32-bits:  00000000 0000000A BBBBBBBB 00000001
-         * least sig. 32-bits: CCCCCCCC CCCCCCCC CCCCCCCC CCCCCCCC
-         *
-         * A = 1 iff same subnet
-         * B = min link speed (in Gbps) between iface pair
-         * C = metric from routing table
-         *
-         * That is, this prioritizes interfaces in the same subnet first,
-         * followed by having the same link speed.  The extra literal "1" is in
-         * there to help prioritize over any zero-cost links that might
-         * otherwise make their way into the graph.  It is not strictly
-         * necessary and could be eliminated if the extra byte is needed.
-         *
-         * TODO add an MCA parameter to optionally swap the offsets of A and
-         * B, thereby prioritizing link speed over same subnet reachability.
-         */
-        /* FIXME how can we check that the metric is the same before we have
-         * communication with this host?  Mismatched metrics could cause the
-         * remote peer to make a different pairing decision... */
-        if (min_link_speed_gbps > 0xff) {
-            opal_output_verbose(20, USNIC_OUT, "clamping min_link_speed_gbps=%u to 255",
-                                min_link_speed_gbps);
-            min_link_speed_gbps = 0xff;
+
+    if(mca_btl_usnic_component.libfabric_use_usnic) {
+        err = module->usnic_av_ops->get_distance(module->av, &sin, &metric);
+        if (0 != err || (0 == err && -1 == metric)) {
+            return 0; /* no connectivity */
         }
-        return ((uint64_t)(mynet == peernet) << 48) |
-               ((uint64_t)(min_link_speed_gbps & 0xff) << 40) |
-               ((uint64_t)0x1 << 32) |
-               (/*metric=*/0);
+        else {
+            /* Format in binary    MSB                             LSB
+             * most sig. 32-bits:  00000000 0000000A BBBBBBBB 00000001
+             * least sig. 32-bits: CCCCCCCC CCCCCCCC CCCCCCCC CCCCCCCC
+             *
+             * A = 1 iff same subnet
+             * B = min link speed (in Gbps) between iface pair
+             * C = metric from routing table
+             *
+             * That is, this prioritizes interfaces in the same subnet first,
+             * followed by having the same link speed.  The extra literal "1" is in
+             * there to help prioritize over any zero-cost links that might
+             * otherwise make their way into the graph.  It is not strictly
+             * necessary and could be eliminated if the extra byte is needed.
+             *
+             * TODO add an MCA parameter to optionally swap the offsets of A and
+             * B, thereby prioritizing link speed over same subnet reachability.
+             */
+            /* FIXME how can we check that the metric is the same before we have
+             * communication with this host?  Mismatched metrics could cause the
+             * remote peer to make a different pairing decision... */
+            if (min_link_speed_gbps > 0xff) {
+                opal_output_verbose(20, USNIC_OUT, "clamping min_link_speed_gbps=%u to 255",
+                                    min_link_speed_gbps);
+                min_link_speed_gbps = 0xff;
+            }
+	}
     }
+
+    return ((uint64_t)(mynet == peernet) << 48) |
+           ((uint64_t)(min_link_speed_gbps & 0xff) << 40) |
+           ((uint64_t)0x1 << 32) |
+           (/*metric=*/0);
+
 }
 
 /* Populate the given proc's match table from an array of (u,v) edge pairs.
@@ -639,7 +644,7 @@ static int match_modex(opal_btl_usnic_module_t *module,
      * before running the matching algorithm on it. */
     if (*index_out >= 0 &&
         proc->proc_modex[*index_out].max_msg_size !=
-        (uint16_t) module->fabric_info->ep_attr->max_msg_size) {
+        (uint32_t) module->fabric_info->ep_attr->max_msg_size) {
         opal_show_help("help-mpi-btl-usnic.txt", "MTU mismatch",
                        true,
                        opal_process_info.nodename,

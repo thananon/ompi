@@ -152,7 +152,8 @@ opal_btl_usnic_component_t mca_btl_usnic_component = {
 
         .btl_init = usnic_component_init,
         .btl_progress = usnic_component_progress,
-    }
+    },
+    .libfabric_use_usnic = false 
 };
 
 
@@ -709,6 +710,12 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
 
     /* We only want providers named "usnic" that are of type EP_DGRAM */
     fabric_attr.prov_name = "usnic";
+    /* Check if the user request usnic provider or not */
+    if( !strcmp(mca_btl_usnic_component.libfabric_provider,"usnic")) 
+	    mca_btl_usnic_component.libfabric_use_usnic = true;
+
+    /* Ask usnic for the provider user requested with EP_RDM */
+    fabric_attr.prov_name = mca_btl_usnic_component.libfabric_provider;
     ep_attr.type = FI_EP_RDM;
 
     hints.caps = FI_MSG;
@@ -739,14 +746,15 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
         return NULL;
     }
 
-    /* Do quick sanity check to ensure that we can lock memory (which
-       is required for registered memory). */
-    if (OPAL_SUCCESS != check_reg_mem_basics()) {
-        opal_output_verbose(5, USNIC_OUT,
-                            "btl:usnic: disqualifiying myself due to lack of lockable memory");
-        return NULL;
+    if(mca_btl_usnic_component.libfabric_use_usnic) {
+        /* Do quick sanity check to ensure that we can lock memory (which
+           is required for registered memory). */
+        if (OPAL_SUCCESS != check_reg_mem_basics()) {
+            opal_output_verbose(5, USNIC_OUT,
+                                "btl:usnic: disqualifiying myself due to lack of lockable memory");
+            return NULL;
+        }
     }
-
     /************************************************************************
      * Below this line, we assume that usnic is loaded on all procs,
      * and therefore we will guarantee to the the modex send, even if
@@ -875,41 +883,62 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             goto error;
         }
 
-        /* Obtain usnic-specific device info (e.g., netmask) that
-           doesn't come in the normal fi_getinfo(). This allows us to
-           do filtering, later. */
-        ret = fi_open_ops(&fabric->fid, FI_USNIC_FABRIC_OPS_1, 0,
-                (void **)&module->usnic_fabric_ops, NULL);
-        if (ret != 0) {
-            opal_output_verbose(5, USNIC_OUT,
-                        "btl:usnic: device %s fabric_open_ops failed %d (%s)",
-                        module->linux_device_name, ret, fi_strerror(-ret));
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-            continue;
-        }
+	if (mca_btl_usnic_component.libfabric_use_usnic){
+            /* Obtain usnic-specific device info (e.g., netmask) that
+               doesn't come in the normal fi_getinfo(). This allows us to
+               do filtering, later. */
+            ret = fi_open_ops(&fabric->fid, FI_USNIC_FABRIC_OPS_1, 0,
+                    (void **)&module->usnic_fabric_ops, NULL);
+            if (ret != 0) {
+                opal_output_verbose(5, USNIC_OUT,
+                            "btl:usnic: device %s fabric_open_ops failed %d (%s)",
+                            info->fabric_attr->name, ret, fi_strerror(-ret));
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+                continue;
+            }
 
-        ret =
-            module->usnic_fabric_ops->getinfo(1,
-                                            fabric,
-                                            &module->usnic_info);
-        if (ret != 0) {
+            ret =
+                module->usnic_fabric_ops->getinfo(1,
+                                                fabric,
+                                                &module->usnic_info);
+            if (ret != 0) {
+                opal_output_verbose(5, USNIC_OUT,
+                            "btl:usnic: device %s usnic_getinfo failed %d (%s)",
+                            info->fabric_attr->name, ret, fi_strerror(-ret));
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+                continue;
+            }
             opal_output_verbose(5, USNIC_OUT,
-                        "btl:usnic: device %s usnic_getinfo failed %d (%s)",
-                        module->linux_device_name, ret, fi_strerror(-ret));
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-            continue;
+                                "btl:usnic: device %s usnic_info: link speed=%d, netmask=0x%x, ifname=%s, num_vf=%d, qp/vf=%d, cq/vf=%d",
+                                info->fabric_attr->name,
+                                (unsigned int) module->usnic_info.ui.v1.ui_link_speed,
+                                (unsigned int) module->usnic_info.ui.v1.ui_netmask_be,
+                                module->usnic_info.ui.v1.ui_ifname,
+                                module->usnic_info.ui.v1.ui_num_vf,
+                                module->usnic_info.ui.v1.ui_qp_per_vf,
+                                module->usnic_info.ui.v1.ui_cq_per_vf);
+
+            /* The first time through, check some usNIC configuration
+               minimum settings with information we got back from the fi_*
+               probes (these are VIC-wide settings -- they don't change
+               for each module we create, so we only need to check
+               once). */
+            if (0 == j &&
+                check_usnic_config(module, num_local_procs) != OPAL_SUCCESS) {
+                opal_output_verbose(5, USNIC_OUT,
+                                     "btl:usnic: device %s is not provisioned with enough resources -- skipping",
+                                     info->fabric_attr->name);
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+
+                mca_btl_usnic_component.num_modules = 0;
+                goto error;
+            }
+
+
         }
-        opal_output_verbose(5, USNIC_OUT,
-                            "btl:usnic: device %s usnic_info: link speed=%d, netmask=0x%x, ifname=%s, num_vf=%d, qp/vf=%d, cq/vf=%d",
-                            module->linux_device_name,
-                            (unsigned int) module->usnic_info.ui.v1.ui_link_speed,
-                            (unsigned int) module->usnic_info.ui.v1.ui_netmask_be,
-                            module->usnic_info.ui.v1.ui_ifname,
-                            module->usnic_info.ui.v1.ui_num_vf,
-                            module->usnic_info.ui.v1.ui_qp_per_vf,
-                            module->usnic_info.ui.v1.ui_cq_per_vf);
 
         /* respect if_include/if_exclude subnets/ifaces from the user */
         if (filter != NULL) {
@@ -925,24 +954,6 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
                 continue;
             }
         }
-
-        /* The first time through, check some usNIC configuration
-           minimum settings with information we got back from the fi_*
-           probes (these are VIC-wide settings -- they don't change
-           for each module we create, so we only need to check
-           once). */
-        if (0 == j &&
-            check_usnic_config(module, num_local_procs) != OPAL_SUCCESS) {
-            opal_output_verbose(5, USNIC_OUT,
-                                "btl:usnic: device %s is not provisioned with enough resources -- skipping",
-                                module->linux_device_name);
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-
-            mca_btl_usnic_component.num_modules = 0;
-            goto error;
-        }
-
         /*************************************************/
         /* Below this point, we know we want this device */
         /*************************************************/
