@@ -1282,8 +1282,8 @@ static int usnic_reg_mr(void* reg_data, void* base, size_t size,
     opal_btl_usnic_module_t* mod = (opal_btl_usnic_module_t*)reg_data;
     opal_btl_usnic_reg_t* ur = (opal_btl_usnic_reg_t*)reg;
     int rc;
-
-    rc = fi_mr_reg(mod->domain, base, size, 0, 0, 0, 0, &ur->ur_mr, NULL);
+    static int id = 0;
+    rc = fi_mr_reg(mod->domain, base, size, 0, 0, ++id, 0, &ur->ur_mr, NULL);
     if (0 != rc) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
@@ -1624,12 +1624,14 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                        opal_process_info.nodename,
                        module->fabric_info->fabric_attr->name,
                        "failed to create CQ", __FILE__, __LINE__);
+	    assert(0);
         goto error;
     }
 
     /* Set up the endpoint for this channel */
     rc = create_ep(module, channel);
     if (OPAL_SUCCESS != rc) {
+	    assert(0);
         goto error;
     }
 
@@ -1664,6 +1666,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                                         otherwise ctx gets
                                         clobbered */
     if (OPAL_SUCCESS != rc) {
+	    assert(0);
         goto error;
     }
 
@@ -1753,6 +1756,7 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     modex->netmask =         uip->ui.v1.ui_netmask_be;
     modex->max_msg_size =    info->ep_attr->max_msg_size;
     modex->link_speed_mbps = uip->ui.v1.ui_link_speed;
+    opal_output(0,"ep_attr->max_msg_size = %d",info->ep_attr->max_msg_size);
 
     opal_btl_usnic_snprintf_ipv4_addr(module->if_ipv4_addr_str,
                                       sizeof(module->if_ipv4_addr_str),
@@ -2027,10 +2031,14 @@ static int init_channels(opal_btl_usnic_module_t *module)
         goto destroy;
     }
 
-    rc = fi_open_ops(&module->av->fid, FI_USNIC_AV_OPS_1, 0,
-            (void **)&module->usnic_av_ops, NULL);
-    if (rc != OPAL_SUCCESS) {
-        goto destroy;
+    if(mca_btl_usnic_component.libfabric_use_usnic) {
+
+        rc = fi_open_ops(&module->av->fid, FI_USNIC_AV_OPS_1, 0,
+                (void **)&module->usnic_av_ops, NULL);
+        if (rc != OPAL_SUCCESS) {
+            goto destroy;
+        }
+
     }
 
     memset(&eq_attr, 0, sizeof(eq_attr));
