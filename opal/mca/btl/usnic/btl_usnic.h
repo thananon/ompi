@@ -251,6 +251,11 @@ typedef struct opal_btl_usnic_component_t {
 
     /* OPAL async progress event base */
     opal_event_base_t *opal_evbase;
+
+    /* provider to request from libfabric */
+    char *libfabric_provider;
+    bool libfabric_use_usnic;
+
 } opal_btl_usnic_component_t;
 
 OPAL_MODULE_DECLSPEC extern opal_btl_usnic_component_t mca_btl_usnic_component;
