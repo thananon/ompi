@@ -1617,7 +1617,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
     /* Set up the endpoint for this channel */
     rc = create_ep(module, channel);
     if (OPAL_SUCCESS != rc) {
-	    assert(0);
         goto error;
     }
 
@@ -1652,9 +1651,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                                         free_list_init,
                                         otherwise ctx gets
                                         clobbered */
-    if (OPAL_SUCCESS != rc) {
-	    assert(0);
-    }
+    assert(OPAL_SUCCESS == rc);
 
     /* Post receive descriptors */
     for (i = 0; i < rd_num; i++) {
