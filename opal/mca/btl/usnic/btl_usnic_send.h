@@ -12,7 +12,6 @@
 
 #include "btl_usnic.h"
 #include "btl_usnic_frag.h"
-#include "btl_usnic_ack.h"
 #if MSGDEBUG1
 #include "btl_usnic_util.h"
 #endif
@@ -93,51 +92,6 @@ opal_btl_usnic_post_segment(
     if (sseg->ss_base.us_type != OPAL_BTL_USNIC_SEG_ACK) {
         ++sseg->ss_send_posted;
         ++sseg->ss_parent_frag->sf_seg_post_cnt;
-    }
-
-    /* Stats */
-    ++module->stats.num_total_sends;
-    ++channel->num_channel_sends;
-    --channel->credits;
-}
-
-/*
- * Common point for posting an ACK
- */
-static inline void
-opal_btl_usnic_post_ack(
-    opal_btl_usnic_module_t *module,
-    opal_btl_usnic_endpoint_t *endpoint,
-    opal_btl_usnic_send_segment_t *sseg)
-{
-    int ret;
-
-    /* get channel and remote channel */
-    opal_btl_usnic_channel_id_t channel_id = sseg->ss_channel;
-    opal_btl_usnic_channel_t *channel = &module->mod_channels[channel_id];
-
-#if MSGDEBUG1
-    opal_output(0, "post_send ACK: type=%s, ep=%p, remote_addr=%p, addr=%p, len=%"
-                PRIsize_t,
-                usnic_seg_type_str(sseg->ss_base.us_type),
-                (void*) channel->ep,
-                (void*) endpoint->endpoint_remote_addrs[channel_id],
-                (void*) sseg->ss_ptr,
-                sseg->ss_len);
-#endif
-
-    assert(channel_id == USNIC_PRIORITY_CHANNEL);
-
-    ret = fi_send(channel->ep,
-            sseg->ss_ptr,
-            sseg->ss_len + mca_btl_usnic_component.prefix_send_offset,
-            NULL,
-            endpoint->endpoint_remote_addrs[channel_id],
-            sseg);
-    if (OPAL_UNLIKELY(0 != ret)) {
-        opal_btl_usnic_util_abort("fi_send() failed",
-                                  __FILE__, __LINE__);
-        /* Never returns */
     }
 
     /* Stats */

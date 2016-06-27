@@ -93,9 +93,6 @@ static void endpoint_destruct(mca_btl_base_endpoint_t* endpoint)
 {
     opal_btl_usnic_proc_t *proc;
 
-    if (endpoint->endpoint_ack_needed) {
-        opal_btl_usnic_remove_from_endpoints_needing_ack(endpoint);
-    }
     OBJ_DESTRUCT(&(endpoint->endpoint_ack_li));
 
     /* Remove the endpoint from the all_endpoints list */

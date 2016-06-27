@@ -223,7 +223,6 @@ typedef struct opal_btl_usnic_send_segment_t {
 
     /* How many times is this frag on a hardware queue? */
     uint32_t ss_send_posted;
-    bool ss_ack_pending;        /* true until this segment is ACKed */
 
 } opal_btl_usnic_send_segment_t;
 
@@ -547,43 +546,6 @@ opal_btl_usnic_chunk_segment_return(
     assert(OPAL_BTL_USNIC_SEG_CHUNK == seg->ss_base.us_type);
 
     USNIC_COMPAT_FREE_LIST_RETURN(&(module->chunk_segs), &(seg->ss_base.us_list));
-}
-
-/*
- * Alloc an ACK segment
- */
-static inline opal_btl_usnic_ack_segment_t *
-opal_btl_usnic_ack_segment_alloc(opal_btl_usnic_module_t *module)
-{
-    opal_free_list_item_t *item;
-    opal_btl_usnic_send_segment_t *ack;
-
-    USNIC_COMPAT_FREE_LIST_GET(&(module->ack_segs), item);
-    if (OPAL_UNLIKELY(NULL == item)) {
-        return NULL;
-    }
-
-    ack = (opal_btl_usnic_ack_segment_t*) item;
-    ack->ss_channel = USNIC_PRIORITY_CHANNEL;
-
-    assert(ack);
-    assert(OPAL_BTL_USNIC_SEG_ACK == ack->ss_base.us_type);
-
-    return ack;
-}
-
-/*
- * Return an ACK segment
- */
-static inline void
-opal_btl_usnic_ack_segment_return(
-    opal_btl_usnic_module_t *module,
-    opal_btl_usnic_ack_segment_t *ack)
-{
-    assert(ack);
-    assert(OPAL_BTL_USNIC_SEG_ACK == ack->ss_base.us_type);
-
-    USNIC_COMPAT_FREE_LIST_RETURN(&(module->ack_segs), &(ack->ss_base.us_list));
 }
 
 /* Compute and set the proper value for sfrag->sf_size.  This must not be used
