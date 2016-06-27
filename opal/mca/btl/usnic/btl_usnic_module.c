@@ -1624,7 +1624,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                        opal_process_info.nodename,
                        module->fabric_info->fabric_attr->name,
                        "failed to create CQ", __FILE__, __LINE__);
-	    assert(0);
         goto error;
     }
 
@@ -1643,6 +1642,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
      * line size so that each segment is guaranteed to start on a
      * cache line boundary.
      */
+    if(max_msg_size > 4000000) max_msg_size = MAX_EP_MSG_SIZE;
     segsize = (max_msg_size + channel->info->ep_attr->msg_prefix_size +
             opal_cache_line_size - 1) & ~(opal_cache_line_size - 1);
     OBJ_CONSTRUCT(&channel->recv_segs, opal_free_list_t);
@@ -1667,7 +1667,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                                         clobbered */
     if (OPAL_SUCCESS != rc) {
 	    assert(0);
-        goto error;
     }
 
     /* Post receive descriptors */
@@ -1751,11 +1750,14 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     struct fi_usnic_info *uip = &module->usnic_info;
     struct sockaddr_in *sin;
 
+    if(info->ep_attr->max_msg_size > 4000000) info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
+
     sin = info->src_addr;
     modex->ipv4_addr =       sin->sin_addr.s_addr;
     modex->netmask =         uip->ui.v1.ui_netmask_be;
     modex->max_msg_size =    info->ep_attr->max_msg_size;
     modex->link_speed_mbps = uip->ui.v1.ui_link_speed;
+
 
     opal_btl_usnic_snprintf_ipv4_addr(module->if_ipv4_addr_str,
                                       sizeof(module->if_ipv4_addr_str),
@@ -2076,7 +2078,7 @@ static int init_channels(opal_btl_usnic_module_t *module)
     }
     rc = init_one_channel(module,
             USNIC_DATA_CHANNEL,
-            MAX_EP_MSG_SIZE,
+            module->fabric_info->ep_attr->max_msg_size,
             module->rd_num, module->sd_num);
     if (rc != OPAL_SUCCESS) {
         goto destroy;

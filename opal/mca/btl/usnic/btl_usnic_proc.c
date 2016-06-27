@@ -644,7 +644,7 @@ static int match_modex(opal_btl_usnic_module_t *module,
      * before running the matching algorithm on it. */
     if (*index_out >= 0 &&
         proc->proc_modex[*index_out].max_msg_size !=
-        (uint16_t) module->fabric_info->ep_attr->max_msg_size) {
+        (uint32_t) module->fabric_info->ep_attr->max_msg_size) {
         opal_show_help("help-mpi-btl-usnic.txt", "MTU mismatch",
                        true,
                        opal_process_info.nodename,
