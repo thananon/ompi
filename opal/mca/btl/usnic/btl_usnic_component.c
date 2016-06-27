@@ -1421,13 +1421,11 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 OPAL_LIST_FOREACH(sseg, &lsfrag->lsf_seg_chain,
                                   opal_btl_usnic_send_segment_t) {
                     /* chunk segs are just typedefs to send segs */
-                    opal_output(0, "        chunk seg %p, chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
+                    opal_output(0, "        chunk seg %p, chan=%s times_posted=%"PRIu32" \n",
                                 (void *)sseg,
                                 (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                                 "prio" : "data"),
-                                sseg->ss_hotel_room,
-                                sseg->ss_send_posted,
-                                (sseg->ss_ack_pending ? "true" : "false"));
+                                sseg->ss_send_posted);
                 }
             break;
 
@@ -1440,13 +1438,11 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 opal_output(0, "%s", str);
 
                 sseg = &ssfrag->ssf_segment;
-                opal_output(0, "        small seg %p, chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
+                opal_output(0, "        small seg %p, chan=%s times_posted=%"PRIu32"\n",
                     (void *)sseg,
                     (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                         "prio" : "data"),
-                    sseg->ss_hotel_room,
-                    sseg->ss_send_posted,
-                    (sseg->ss_ack_pending ? "true" : "false"));
+                    sseg->ss_send_posted);
             break;
 
             case OPAL_BTL_USNIC_FRAG_PUT_DEST:
@@ -1464,7 +1460,6 @@ void opal_btl_usnic_component_debug(void)
     int i;
     opal_btl_usnic_module_t *module;
     opal_btl_usnic_endpoint_t *endpoint;
-    opal_btl_usnic_send_segment_t *sseg;
     opal_list_item_t *item;
     const opal_proc_t *proc = opal_proc_local_get();
 
@@ -1485,12 +1480,6 @@ void opal_btl_usnic_component_debug(void)
             dump_endpoint(endpoint);
         }
 
-        opal_output(0, "  endpoints_that_need_acks:\n");
-        OPAL_LIST_FOREACH(endpoint, &module->endpoints_that_need_acks,
-                          opal_btl_usnic_endpoint_t) {
-            dump_endpoint(endpoint);
-        }
-
         /* the all_endpoints list uses a different list item member */
         opal_output(0, "  all_endpoints:\n");
         opal_mutex_lock(&module->all_endpoints_lock);
@@ -1502,12 +1491,6 @@ void opal_btl_usnic_component_debug(void)
             dump_endpoint(endpoint);
         }
         opal_mutex_unlock(&module->all_endpoints_lock);
-
-        opal_output(0, "  pending_resend_segs:\n");
-        OPAL_LIST_FOREACH(sseg, &module->pending_resend_segs,
-                          opal_btl_usnic_send_segment_t) {
-            opal_output(0, "    sseg %p\n", (void *)sseg);
-        }
 
         opal_btl_usnic_print_stats(module, "  manual", /*reset=*/false);
     }

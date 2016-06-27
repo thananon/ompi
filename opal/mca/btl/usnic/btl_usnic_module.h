@@ -183,17 +183,6 @@ typedef struct opal_btl_usnic_module_t {
     /* this list uses base endpoint ptr */
     opal_list_t endpoints_with_sends;
 
-    /** list of send frags that are waiting to be resent (they
-        previously deferred because of lack of resources) */
-    opal_list_t pending_resend_segs;
-
-    /** ack segments */
-    opal_free_list_t ack_segs;
-
-    /** list of endpoints to which we need to send ACKs */
-    /* this list uses endpoint->endpoint_ack_li */
-    opal_list_t endpoints_that_need_acks;
-
     /* abstract queue-pairs into channels */
     opal_btl_usnic_channel_t mod_channels[USNIC_NUM_CHANNELS];
 
@@ -210,78 +199,10 @@ typedef struct opal_btl_usnic_module_t {
 
 struct opal_btl_usnic_frag_t;
 extern opal_btl_usnic_module_t opal_btl_usnic_module_template;
-
-/*
- * Manipulate the "endpoints_that_need_acks" list
- */
-
-/* get first endpoint needing ACK */
-static inline opal_btl_usnic_endpoint_t *
-opal_btl_usnic_get_first_endpoint_needing_ack(
-    opal_btl_usnic_module_t *module)
-{
-    opal_list_item_t *item;
-    opal_btl_usnic_endpoint_t *endpoint;
-
-    item = opal_list_get_first(&module->endpoints_that_need_acks);
-    if (item != opal_list_get_end(&module->endpoints_that_need_acks)) {
-        endpoint = container_of(item, mca_btl_base_endpoint_t, endpoint_ack_li);
-        return endpoint;
-    } else {
-        return NULL;
-    }
-}
-
-/* get next item in chain */
-static inline opal_btl_usnic_endpoint_t *
-opal_btl_usnic_get_next_endpoint_needing_ack(
-    opal_btl_usnic_endpoint_t *endpoint)
-{
-    opal_list_item_t *item;
-    opal_btl_usnic_module_t *module;
-
-    module = endpoint->endpoint_module;
-
-    item = opal_list_get_next(&(endpoint->endpoint_ack_li));
-    if (item != opal_list_get_end(&module->endpoints_that_need_acks)) {
-        endpoint = container_of(item, mca_btl_base_endpoint_t, endpoint_ack_li);
-        return endpoint;
-    } else {
-        return NULL;
-    }
-}
-
-static inline void
-opal_btl_usnic_remove_from_endpoints_needing_ack(
-    opal_btl_usnic_endpoint_t *endpoint)
-{
-    opal_list_remove_item(
-            &(endpoint->endpoint_module->endpoints_that_need_acks),
-            &endpoint->endpoint_ack_li);
-    endpoint->endpoint_ack_needed = false;
-    endpoint->endpoint_acktime = 0;
-#if MSGDEBUG1
-    opal_output(0, "clear ack_needed on %p\n", (void*)endpoint);
-#endif
-}
-
-static inline void
-opal_btl_usnic_add_to_endpoints_needing_ack(
-    opal_btl_usnic_endpoint_t *endpoint)
-{
-    opal_list_append(&(endpoint->endpoint_module->endpoints_that_need_acks),
-            &endpoint->endpoint_ack_li);
-    endpoint->endpoint_ack_needed = true;
-#if MSGDEBUG1
-    opal_output(0, "set ack_needed on %p\n", (void*)endpoint);
-#endif
-}
-
 /*
  * Initialize a module
  */
 int opal_btl_usnic_module_init(opal_btl_usnic_module_t* module);
-
 
 /*
  * Progress pending sends on a module

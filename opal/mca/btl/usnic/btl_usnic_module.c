@@ -897,18 +897,6 @@ static int usnic_finalize(struct mca_btl_base_module_t* btl)
     module->all_endpoints_constructed = false;
     opal_mutex_unlock(&module->all_endpoints_lock);
 
-    /* _flush_endpoint should have emptied this list */
-    assert(opal_list_is_empty(&(module->pending_resend_segs)));
-    OBJ_DESTRUCT(&module->pending_resend_segs);
-
-    /* Similarly, empty the endpoints_that_need_acks list so that
-       endpoints don't still have an endpoint_ack_li item still in
-       use */
-    while (!opal_list_is_empty(&(module->endpoints_that_need_acks))) {
-        (void) opal_list_remove_first(&(module->endpoints_that_need_acks));
-    }
-    OBJ_DESTRUCT(&module->endpoints_that_need_acks);
-
     /* Note that usnic_del_procs will have been called for *all* procs
        by this point, so the module->all_procs list will be empty.
        Destruct it. */
@@ -919,7 +907,6 @@ static int usnic_finalize(struct mca_btl_base_module_t* btl)
     }
     free(module->module_recv_buffers);
 
-    OBJ_DESTRUCT(&module->ack_segs);
     OBJ_DESTRUCT(&module->endpoints_with_sends);
     OBJ_DESTRUCT(&module->small_send_frags);
     OBJ_DESTRUCT(&module->large_send_frags);
@@ -1728,7 +1715,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
     /* Set up the endpoint for this channel */
     rc = create_ep(module, channel);
     if (OPAL_SUCCESS != rc) {
-	    assert(0);
         goto error;
     }
 
@@ -1772,9 +1758,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                                         free_list_init,
                                         otherwise ctx gets
                                         clobbered */
-    if (OPAL_SUCCESS != rc) {
-	    assert(0);
-    }
+    assert(OPAL_SUCCESS == rc);
 
     /* Post receive descriptors */
     for (i = 0; i < rd_num; i++) {
@@ -2263,10 +2247,6 @@ static void init_random_objects(opal_btl_usnic_module_t *module)
     module->all_endpoints_constructed = true;
     opal_mutex_unlock(&module->all_endpoints_lock);
 
-    /* Pending send segs list */
-    OBJ_CONSTRUCT(&module->pending_resend_segs, opal_list_t);
-    OBJ_CONSTRUCT(&module->endpoints_that_need_acks, opal_list_t);
-
     /* list of endpoints that are ready to send */
     OBJ_CONSTRUCT(&module->endpoints_with_sends, opal_list_t);
 }
@@ -2354,29 +2334,7 @@ static void init_freelists(opal_btl_usnic_module_t *module)
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
 
-    /* ACK segments freelist */
-    uint32_t ack_segment_len;
-    ack_segment_len = (sizeof(opal_btl_usnic_btl_header_t) +
-            opal_cache_line_size - 1) & ~(opal_cache_line_size - 1);
-    OBJ_CONSTRUCT(&module->ack_segs, opal_free_list_t);
-    rc = usnic_compat_free_list_init(&module->ack_segs,
-                             sizeof(opal_btl_usnic_ack_segment_t) +
-                                 mca_btl_usnic_component.prefix_send_offset,
-                             opal_cache_line_size,
-                             OBJ_CLASS(opal_btl_usnic_ack_segment_t),
-                             ack_segment_len,
-                             opal_cache_line_size,
-                             module->sd_num * 4,
-                             -1,
-                             module->sd_num / 2,
-                             module->super.btl_mpool,
-                             0 /* mpool reg flags */,
-                             module->rcache,
-                             NULL /* item_init */,
-                             NULL /* item_init_context */);
-    assert(OPAL_SUCCESS == rc);
-
-    /*
+        /*
      * Initialize pools of large recv buffers
      *
      * NOTE: (last_pool < first_pool) is _not_ erroneous; recv buffer

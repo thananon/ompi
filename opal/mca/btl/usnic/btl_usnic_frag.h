@@ -66,7 +66,6 @@ usnic_frag_type(opal_btl_usnic_frag_type_t t)
 }
 
 typedef enum {
-    OPAL_BTL_USNIC_SEG_ACK,
     OPAL_BTL_USNIC_SEG_FRAG,
     OPAL_BTL_USNIC_SEG_CHUNK,
     OPAL_BTL_USNIC_SEG_RECV
@@ -76,7 +75,6 @@ static inline const char *
 usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
 {
     switch (t) {
-    case OPAL_BTL_USNIC_SEG_ACK:   return "ACK";
     case OPAL_BTL_USNIC_SEG_FRAG:  return "FRAG";
     case OPAL_BTL_USNIC_SEG_CHUNK: return "CHUNK";
     case OPAL_BTL_USNIC_SEG_RECV:  return "RECV";
@@ -114,9 +112,8 @@ typedef struct opal_btl_usnic_reg_t {
  * usnic header type
  */
 typedef enum {
-    OPAL_BTL_USNIC_PAYLOAD_TYPE_ACK = 1,
-    OPAL_BTL_USNIC_PAYLOAD_TYPE_FRAG = 2,       /* an entire fragment */
-    OPAL_BTL_USNIC_PAYLOAD_TYPE_CHUNK = 3       /* one chunk of fragment */
+    OPAL_BTL_USNIC_PAYLOAD_TYPE_FRAG = 1,       /* an entire fragment */
+    OPAL_BTL_USNIC_PAYLOAD_TYPE_CHUNK = 2       /* one chunk of fragment */
 } opal_btl_usnic_payload_type_t;
 
 /**
@@ -129,9 +126,6 @@ typedef struct {
     /* Hashed RTE process name of the sender */
     uint64_t sender;
 
-    /* Sliding window sequence number (echoed back in an ACK). */
-    opal_btl_usnic_seq_t pkt_seq;
-
     /* payload legnth (in bytes).  We unfortunately have to include
        this in our header because the L2 layer may artifically inflate
        the length of the packet to meet a minimum size */
@@ -143,8 +137,6 @@ typedef struct {
     /* Type of BTL header (see enum, above) */
     uint8_t payload_type;
 
-    /* true if there is piggy-backed ACK */
-    uint8_t ack_present;
 
     /* tag for upper layer */
     mca_btl_base_tag_t tag;
@@ -188,7 +180,7 @@ struct opal_btl_usnic_endpoint_t;
 
 /**
  * Descriptor for a recv segment.  This is exactly one packet and may
- * be part of a large or small send or may be an ACK
+ * be part of a large or small send
  */
 typedef struct opal_btl_usnic_recv_segment_t {
     opal_btl_usnic_segment_t rs_base;
@@ -207,7 +199,7 @@ typedef struct opal_btl_usnic_recv_segment_t {
 
 /**
  * Descriptor for a send segment.  This is exactly one packet and may
- * be part of a large or small send or may be an ACK
+ * be part of a large or small send
  */
 typedef struct opal_btl_usnic_send_segment_t {
     opal_btl_usnic_segment_t ss_base;
@@ -219,11 +211,9 @@ typedef struct opal_btl_usnic_send_segment_t {
     opal_btl_usnic_channel_id_t ss_channel;
 
     struct opal_btl_usnic_send_frag_t *ss_parent_frag;
-    int ss_hotel_room;          /* current retrans room, or -1 if none */
 
     /* How many times is this frag on a hardware queue? */
     uint32_t ss_send_posted;
-    bool ss_ack_pending;        /* true until this segment is ACKed */
 
 } opal_btl_usnic_send_segment_t;
 
@@ -428,8 +418,7 @@ opal_btl_usnic_put_dest_frag_alloc(
  * 1. upper layer is freeing it (via module.free())
  * 2. Or all of these:
  *    a) it finishes sending all its segments
- *    b) all of its segments have been ACKed
- *    c) it is owned by the BTL
+ *    b) it is owned by the BTL
  */
 static inline bool
 opal_btl_usnic_send_frag_ok_to_return(
@@ -554,43 +543,6 @@ opal_btl_usnic_chunk_segment_return(
     assert(OPAL_BTL_USNIC_SEG_CHUNK == seg->ss_base.us_type);
 
     USNIC_COMPAT_FREE_LIST_RETURN(&(module->chunk_segs), &(seg->ss_base.us_list));
-}
-
-/*
- * Alloc an ACK segment
- */
-static inline opal_btl_usnic_ack_segment_t *
-opal_btl_usnic_ack_segment_alloc(opal_btl_usnic_module_t *module)
-{
-    opal_free_list_item_t *item;
-    opal_btl_usnic_send_segment_t *ack;
-
-    USNIC_COMPAT_FREE_LIST_GET(&(module->ack_segs), item);
-    if (OPAL_UNLIKELY(NULL == item)) {
-        return NULL;
-    }
-
-    ack = (opal_btl_usnic_ack_segment_t*) item;
-    ack->ss_channel = USNIC_PRIORITY_CHANNEL;
-
-    assert(ack);
-    assert(OPAL_BTL_USNIC_SEG_ACK == ack->ss_base.us_type);
-
-    return ack;
-}
-
-/*
- * Return an ACK segment
- */
-static inline void
-opal_btl_usnic_ack_segment_return(
-    opal_btl_usnic_module_t *module,
-    opal_btl_usnic_ack_segment_t *ack)
-{
-    assert(ack);
-    assert(OPAL_BTL_USNIC_SEG_ACK == ack->ss_base.us_type);
-
-    USNIC_COMPAT_FREE_LIST_RETURN(&(module->ack_segs), &(ack->ss_base.us_list));
 }
 
 /* Compute and set the proper value for sfrag->sf_size.  This must not be used

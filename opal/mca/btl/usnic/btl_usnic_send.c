@@ -94,7 +94,7 @@ opal_btl_usnic_chunk_send_complete(opal_btl_usnic_module_t *module,
     --sseg->ss_send_posted;
     --frag->sf_seg_post_cnt;
 
-    if (sseg->ss_send_posted == 0 && !sseg->ss_ack_pending) {
+    if (sseg->ss_send_posted == 0) {
         opal_btl_usnic_release_send_segment(module, frag, sseg);
     }
 

@@ -79,8 +79,7 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
     if (FAKE_RECV_DROP || OPAL_UNLIKELY(NULL == endpoint)) {
         /* No idea who this was from, so drop it */
 #if MSGDEBUG1
-        opal_output(0, "=== Unknown sender; dropped: seq %" UDSEQ,
-                    bseg->us_btl_header->pkt_seq);
+        opal_output(0, "=== Unknown sender; dropped");
 #endif
         ++module->stats.num_unk_recvs;
         goto repost_no_endpoint;
@@ -112,13 +111,12 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         hdr = seg->rs_base.us_btl_header;
 
 #if MSGDEBUG1
-        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ ", len=%d\n",
-                    (void*) endpoint, hdr->pkt_seq, hdr->payload_len);
+        opal_output(0, "<-- Received FRAG ep %p, len=%d\n",
+                    (void*) endpoint, hdr->payload_len);
 #if 0
 
-        opal_output(0, "<-- Received FRAG ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
+        opal_output(0, "<-- Received FRAG ep %p, from %s to %s: GOOD! seg %p, module %p\n",
                     (void*) endpoint,
-                    seg->rs_base.us_btl_header->pkt_seq,
                     remote_ip, local_ip,
                     (void*) seg, (void*) module);
         if (hdr->put_addr != NULL) {
@@ -169,10 +167,9 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         opal_btl_usnic_rx_frag_info_t *fip;
 
 #if MSGDEBUG1
-        opal_output(0, "<-- Received CHUNK fid %d ep %p, seq %" UDSEQ " from %s to %s: GOOD! seg %p, module %p\n",
+        opal_output(0, "<-- Received CHUNK fid %d ep %p, from %s to %s: GOOD! seg %p, module %p\n",
                     seg->rs_base.us_btl_chunk_header->ch_frag_id,
                     (void*) endpoint,
-                    seg->rs_base.us_btl_chunk_header->ch_hdr.pkt_seq,
                     remote_ip, local_ip,
                     (void*) seg, (void*) module);
 #endif
@@ -300,8 +297,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
             /* release the fragment ID */
             fip->rfi_frag_id = 0;
 
-            /* force immediate ACK */
-            endpoint->endpoint_acktime = 0;
         }
         goto repost;
     }

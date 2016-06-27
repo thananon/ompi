@@ -146,15 +146,6 @@ typedef struct mca_btl_base_endpoint_t {
     /** Receive-related data */
     struct opal_btl_usnic_rx_frag_info_t *endpoint_rx_frag_info;
 
-    /* Values for the current proc to receive from this endpoint on
-       the peer proc */
-    bool endpoint_ack_needed;
-
-    /* When we receive a packet that needs an ACK, set this
-     * to delay the ACK to allow for piggybacking
-     */
-    uint64_t endpoint_acktime;
-
     bool endpoint_connectivity_checked;
     bool endpoint_on_all_endpoints;
 } mca_btl_base_endpoint_t;

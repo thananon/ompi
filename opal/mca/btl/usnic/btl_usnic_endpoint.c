@@ -67,16 +67,13 @@ static void endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     OBJ_CONSTRUCT(&endpoint->endpoint_frag_send_queue, opal_list_t);
 
     endpoint->endpoint_next_frag_id = 1;
-    endpoint->endpoint_acktime = 0;
 
     /* endpoint starts not-ready-to-send */
     endpoint->endpoint_ready_to_send = 0;
-    endpoint->endpoint_ack_needed = false;
 
      /* Setup this endpoint's list links */
     OBJ_CONSTRUCT(&(endpoint->endpoint_ack_li), opal_list_item_t);
     OBJ_CONSTRUCT(&(endpoint->endpoint_endpoint_li), opal_list_item_t);
-    endpoint->endpoint_ack_needed = false;
 
     /* fragment reassembly info */
     endpoint->endpoint_rx_frag_info =
@@ -93,9 +90,6 @@ static void endpoint_destruct(mca_btl_base_endpoint_t* endpoint)
 {
     opal_btl_usnic_proc_t *proc;
 
-    if (endpoint->endpoint_ack_needed) {
-        opal_btl_usnic_remove_from_endpoints_needing_ack(endpoint);
-    }
     OBJ_DESTRUCT(&(endpoint->endpoint_ack_li));
 
     /* Remove the endpoint from the all_endpoints list */

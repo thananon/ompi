@@ -38,7 +38,6 @@ common_send_seg_helper(opal_btl_usnic_send_segment_t *seg)
        the actual send. */
     seg->ss_ptr = (uint8_t *) seg->ss_base.us_list.ptr;
     seg->ss_send_posted = 0;
-    seg->ss_ack_pending = false;
 
     /* Offset the BTL header by (prefix_send_offset) bytes into the
        raw buffer */
@@ -83,27 +82,6 @@ frag_seg_constructor(
 
     bseg->us_btl_header->payload_type = OPAL_BTL_USNIC_PAYLOAD_TYPE_FRAG;
 }
-
-static void
-ack_seg_constructor(
-    opal_btl_usnic_ack_segment_t *ack)
-{
-    opal_btl_usnic_segment_t *bseg;
-
-    bseg = &ack->ss_base;
-    bseg->us_type = OPAL_BTL_USNIC_SEG_ACK;
-
-    /* some more common initializaiton */
-    common_send_seg_helper(ack);
-
-    /* ACK value embedded in BTL header */
-    bseg->us_btl_header->payload_type = OPAL_BTL_USNIC_PAYLOAD_TYPE_ACK;
-    bseg->us_btl_header->payload_len = 0;
-    bseg->us_btl_header->ack_present = 1;
-
-    ack->ss_len = sizeof(bseg->us_btl_header);
-}
-
 
 static void
 recv_seg_constructor(
@@ -272,11 +250,6 @@ OBJ_CLASS_INSTANCE(opal_btl_usnic_chunk_segment_t,
 OBJ_CLASS_INSTANCE(opal_btl_usnic_recv_segment_t,
                    opal_btl_usnic_segment_t,
                    recv_seg_constructor,
-                   NULL);
-
-OBJ_CLASS_INSTANCE(opal_btl_usnic_ack_segment_t,
-                   opal_btl_usnic_segment_t,
-                   ack_seg_constructor,
                    NULL);
 
 /*

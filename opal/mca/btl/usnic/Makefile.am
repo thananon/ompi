@@ -40,6 +40,7 @@ sources = \
     btl_usnic_module.c \
     btl_usnic_module.h \
     btl_usnic.h \
+    btl_usnic_ack.h \
     btl_usnic_component.c \
     btl_usnic_connectivity.h \
     btl_usnic_cclient.c \
