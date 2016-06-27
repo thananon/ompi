@@ -1756,7 +1756,6 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     modex->netmask =         uip->ui.v1.ui_netmask_be;
     modex->max_msg_size =    info->ep_attr->max_msg_size;
     modex->link_speed_mbps = uip->ui.v1.ui_link_speed;
-    opal_output(0,"ep_attr->max_msg_size = %d",info->ep_attr->max_msg_size);
 
     opal_btl_usnic_snprintf_ipv4_addr(module->if_ipv4_addr_str,
                                       sizeof(module->if_ipv4_addr_str),
