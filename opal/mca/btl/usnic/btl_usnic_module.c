@@ -1734,7 +1734,10 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     struct fi_usnic_info *uip = &module->usnic_info;
     struct sockaddr_in *sin;
 
-    if(info->ep_attr->max_msg_size > 4000000) info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
+    /* If libfabric returns some big number, we will just set it
+     * to the maximum of what we need */
+    if(info->ep_attr->max_msg_size > MAX_EP_MSG_SIZE)
+	info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
 
     sin = info->src_addr;
     modex->ipv4_addr =       sin->sin_addr.s_addr;
