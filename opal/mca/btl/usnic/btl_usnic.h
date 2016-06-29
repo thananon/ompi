@@ -287,6 +287,10 @@ void opal_btl_usnic_component_debug(void);
  */
 void opal_btl_usnic_connectivity_map(void);
 
+/**
+ * If fi_getinfo returns some big number, we have to limit ourselves
+ * to some reasonable number. */
 #define MAX_EP_MSG_SIZE 64000
+#define MAX_EP_TINY_MSG_SIZE 768
 END_C_DECLS
 #endif

@@ -1735,7 +1735,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
      * line size so that each segment is guaranteed to start on a
      * cache line boundary.
      */
-    if(max_msg_size > 4000000) max_msg_size = MAX_EP_MSG_SIZE;
     segsize = (max_msg_size + channel->info->ep_attr->msg_prefix_size +
             opal_cache_line_size - 1) & ~(opal_cache_line_size - 1);
     OBJ_CONSTRUCT(&channel->recv_segs, opal_free_list_t);
@@ -1841,7 +1840,10 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     struct fi_usnic_info *uip = &module->usnic_info;
     struct sockaddr_in *sin;
 
-    if(info->ep_attr->max_msg_size > 4000000) info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
+    /* If libfabric returns some big number, we will just set it
+     * to the maximum of what we need */
+    if(info->ep_attr->max_msg_size > MAX_EP_MSG_SIZE)
+	info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
 
     sin = info->src_addr;
     modex->ipv4_addr =       sin->sin_addr.s_addr;
@@ -1983,7 +1985,7 @@ static void init_payload_lengths(opal_btl_usnic_module_t *module)
 
     /* Priorirty queue MTU and max size */
     if (0 == module->max_tiny_msg_size) {
-        module->max_tiny_msg_size = 768;
+        module->max_tiny_msg_size = MAX_EP_TINY_MSG_SIZE;
     }
     module->max_tiny_payload = module->max_tiny_msg_size -
         sizeof(opal_btl_usnic_btl_header_t);
