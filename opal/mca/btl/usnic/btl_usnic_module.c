@@ -1628,7 +1628,6 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
      * line size so that each segment is guaranteed to start on a
      * cache line boundary.
      */
-    if(max_msg_size > 4000000) max_msg_size = MAX_EP_MSG_SIZE;
     segsize = (max_msg_size + channel->info->ep_attr->msg_prefix_size +
             opal_cache_line_size - 1) & ~(opal_cache_line_size - 1);
     OBJ_CONSTRUCT(&channel->recv_segs, opal_free_list_t);
@@ -1869,7 +1868,7 @@ static void init_payload_lengths(opal_btl_usnic_module_t *module)
 
     /* Priorirty queue MTU and max size */
     if (0 == module->max_tiny_msg_size) {
-        module->max_tiny_msg_size = 768;
+        module->max_tiny_msg_size = MAX_EP_MSG_SIZE;
     }
     module->max_tiny_payload = module->max_tiny_msg_size -
         sizeof(opal_btl_usnic_btl_header_t);
