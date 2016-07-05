@@ -1867,7 +1867,7 @@ static void init_payload_lengths(opal_btl_usnic_module_t *module)
 
     /* Priorirty queue MTU and max size */
     if (0 == module->max_tiny_msg_size) {
-        module->max_tiny_msg_size = MAX_EP_MSG_SIZE;
+        module->max_tiny_msg_size = MAX_EP_TINY_MSG_SIZE;
     }
     module->max_tiny_payload = module->max_tiny_msg_size -
         sizeof(opal_btl_usnic_btl_header_t);
