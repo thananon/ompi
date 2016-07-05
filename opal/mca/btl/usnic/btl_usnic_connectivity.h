@@ -285,7 +285,8 @@ opal_btl_usnic_check_connectivity(opal_btl_usnic_module_t *module,
                                   opal_btl_usnic_endpoint_t *endpoint)
 {
     if (OPAL_LIKELY(mca_btl_usnic_component.connectivity_enabled) &&
-        OPAL_UNLIKELY(!endpoint->endpoint_connectivity_checked)) {
+        OPAL_UNLIKELY(!endpoint->endpoint_connectivity_checked) &&
+	mca_btl_usnic_component.libfabric_use_usnic ) {
         opal_btl_usnic_connectivity_ping(module->local_modex.ipv4_addr,
                                          module->local_modex.connectivity_udp_port,
                                          endpoint->endpoint_remote_modex.ipv4_addr,
