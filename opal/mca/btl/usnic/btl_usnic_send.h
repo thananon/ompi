@@ -88,11 +88,8 @@ opal_btl_usnic_post_segment(
         /* Never returns */
     }
 
-    /* track # of time non-ACKs are posted */
-    if (sseg->ss_base.us_type != OPAL_BTL_USNIC_SEG_ACK) {
-        ++sseg->ss_send_posted;
-        ++sseg->ss_parent_frag->sf_seg_post_cnt;
-    }
+    ++sseg->ss_send_posted;
+    ++sseg->ss_parent_frag->sf_seg_post_cnt;
 
     /* Stats */
     ++module->stats.num_total_sends;
@@ -130,10 +127,9 @@ opal_btl_usnic_endpoint_send_segment(
                                           endpoint->endpoint_remote_modex.ipv4_addr,
                                           endpoint->endpoint_remote_modex.netmask);
 
-        opal_output(0, "--> Sending %s: seq: %" UDSEQ ", sender: 0x%016lx from device %s, IP %s, port %u, seg %p, room %d, wc len %u, remote IP %s, port %u",
+        opal_output(0, "--> Sending %s: , sender: 0x%016lx from device %s, IP %s, port %u, seg %p, room %d, wc len %u, remote IP %s, port %u",
             (sseg->ss_parent_frag->sf_base.uf_type == OPAL_BTL_USNIC_FRAG_LARGE_SEND)?
                     "CHUNK" : "FRAG",
-                    sseg->ss_base.us_btl_header->pkt_seq,
                     sseg->ss_base.us_btl_header->sender,
                     endpoint->endpoint_module->fabric_info->fabric_attr->name,
                     local_ip,
