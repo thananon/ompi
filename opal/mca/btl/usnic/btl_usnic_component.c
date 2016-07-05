@@ -1368,13 +1368,12 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
         switch (frag->uf_type) {
             case OPAL_BTL_USNIC_FRAG_LARGE_SEND:
                 lsfrag = (opal_btl_usnic_large_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" \n",
                         lsfrag->lsf_tag,
                         lsfrag->lsf_frag_id,
                         (unsigned long long)lsfrag->lsf_cur_offset,
                         (unsigned long long)lsfrag->lsf_base.sf_size,
-                        lsfrag->lsf_base.sf_seg_post_cnt,
-                        (unsigned long long)lsfrag->lsf_base.sf_ack_bytes_left);
+                        lsfrag->lsf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 
@@ -1392,10 +1391,9 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
 
             case OPAL_BTL_USNIC_FRAG_SMALL_SEND:
                 ssfrag = (opal_btl_usnic_small_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" \n",
                         (unsigned long long)ssfrag->ssf_base.sf_size,
-                        ssfrag->ssf_base.sf_seg_post_cnt,
-                        (unsigned long long)ssfrag->ssf_base.sf_ack_bytes_left);
+                        ssfrag->ssf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 

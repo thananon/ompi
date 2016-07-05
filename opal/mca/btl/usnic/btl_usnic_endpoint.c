@@ -141,7 +141,6 @@ opal_btl_usnic_flush_endpoint(
         /* _cond still needs to check ownership, but make sure the
          * fragment is marked as done.
          */
-        frag->sf_ack_bytes_left = 0;
         frag->sf_seg_post_cnt = 0;
         opal_btl_usnic_send_frag_return_cond(endpoint->endpoint_module, frag);
     }

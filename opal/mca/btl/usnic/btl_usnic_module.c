@@ -1136,7 +1136,6 @@ usnic_send(
     frag->sf_base.uf_remote_seg[0].seg_addr.pval = NULL;      /* not a PUT */
 
     opal_btl_usnic_compute_sf_size(frag);
-    frag->sf_ack_bytes_left = frag->sf_size;
 
 #if MSGDEBUG2
     opal_output(0, "usnic_send: frag=%p, endpoint=%p, tag=%d, sf_size=%d\n",
@@ -1160,7 +1159,7 @@ usnic_send(
      * then inline and fastpath it
      */
     if (frag->sf_base.uf_type == OPAL_BTL_USNIC_FRAG_SMALL_SEND &&
-            frag->sf_ack_bytes_left < module->max_tiny_payload &&
+            frag->sf_size < module->max_tiny_payload &&
             (get_send_credits(&module->mod_channels[USNIC_PRIORITY_CHANNEL]) >=
              module->mod_channels[USNIC_PRIORITY_CHANNEL].fastsend_wqe_thresh)) {
         size_t payload_len;
@@ -1168,7 +1167,7 @@ usnic_send(
         sfrag = (opal_btl_usnic_small_send_frag_t *)frag;
         sseg = &sfrag->ssf_segment;
 
-        payload_len = frag->sf_ack_bytes_left;
+        payload_len = frag->sf_size;
         sseg->ss_base.us_btl_header->payload_len = payload_len;
 
 

@@ -260,7 +260,6 @@ typedef struct opal_btl_usnic_send_frag_t {
                                              convertor required */
 
     uint32_t sf_seg_post_cnt;   /* total segs currently posted for this frag */
-    size_t sf_ack_bytes_left;   /* bytes remaining to be ACKed */
 
     struct opal_btl_usnic_send_frag_t *sf_next;
 } opal_btl_usnic_send_frag_t;
@@ -439,7 +438,6 @@ opal_btl_usnic_send_frag_ok_to_return(
 
     if (OPAL_LIKELY(frag->sf_base.uf_base.des_flags &
                 MCA_BTL_DES_FLAGS_BTL_OWNERSHIP) &&
-        0 == frag->sf_ack_bytes_left &&
         0 == frag->sf_seg_post_cnt) {
         return true;
     }
