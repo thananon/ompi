@@ -297,8 +297,6 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
             /* release the fragment ID */
             fip->rfi_frag_id = 0;
 
-            /* force immediate ACK */
-            endpoint->endpoint_acktime = 0;
         }
         goto repost;
     }
