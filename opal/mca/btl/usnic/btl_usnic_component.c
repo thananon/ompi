@@ -1390,11 +1390,10 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 OPAL_LIST_FOREACH(sseg, &lsfrag->lsf_seg_chain,
                                   opal_btl_usnic_send_segment_t) {
                     /* chunk segs are just typedefs to send segs */
-                    opal_output(0, "        chunk seg %p, chan=%s hotel=%d times_posted=%"PRIu32" \n",
+                    opal_output(0, "        chunk seg %p, chan=%s times_posted=%"PRIu32" \n",
                                 (void *)sseg,
                                 (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                                 "prio" : "data"),
-                                sseg->ss_hotel_room,
                                 sseg->ss_send_posted);
                 }
             break;
@@ -1408,11 +1407,10 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
                 opal_output(0, "%s", str);
 
                 sseg = &ssfrag->ssf_segment;
-                opal_output(0, "        small seg %p, chan=%s hotel=%d times_posted=%"PRIu32"\n",
+                opal_output(0, "        small seg %p, chan=%s times_posted=%"PRIu32"\n",
                     (void *)sseg,
                     (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                         "prio" : "data"),
-                    sseg->ss_hotel_room,
                     sseg->ss_send_posted);
             break;
 

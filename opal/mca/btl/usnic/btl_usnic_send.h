@@ -127,7 +127,7 @@ opal_btl_usnic_endpoint_send_segment(
                                           endpoint->endpoint_remote_modex.ipv4_addr,
                                           endpoint->endpoint_remote_modex.netmask);
 
-        opal_output(0, "--> Sending %s: , sender: 0x%016lx from device %s, IP %s, port %u, seg %p, room %d, wc len %u, remote IP %s, port %u",
+        opal_output(0, "--> Sending %s: , sender: 0x%016lx from device %s, IP %s, port %u, seg %p, wc len %u, remote IP %s, port %u",
             (sseg->ss_parent_frag->sf_base.uf_type == OPAL_BTL_USNIC_FRAG_LARGE_SEND)?
                     "CHUNK" : "FRAG",
                     sseg->ss_base.us_btl_header->sender,
@@ -135,7 +135,6 @@ opal_btl_usnic_endpoint_send_segment(
                     local_ip,
                     module->local_modex.ports[sseg->ss_channel],
                     (void*)sseg,
-                    sseg->ss_hotel_room,
                     sseg->ss_ptr,
                     remote_ip,
                     endpoint->endpoint_remote_modex.ports[sseg->ss_channel]);

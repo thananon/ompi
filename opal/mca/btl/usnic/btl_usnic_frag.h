@@ -215,7 +215,6 @@ typedef struct opal_btl_usnic_send_segment_t {
     opal_btl_usnic_channel_id_t ss_channel;
 
     struct opal_btl_usnic_send_frag_t *ss_parent_frag;
-    int ss_hotel_room;          /* current retrans room, or -1 if none */
 
     /* How many times is this frag on a hardware queue? */
     uint32_t ss_send_posted;
