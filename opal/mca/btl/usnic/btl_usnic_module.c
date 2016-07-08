@@ -1275,10 +1275,17 @@ static int usnic_reg_mr(void* reg_data, void* base, size_t size,
     opal_btl_usnic_reg_t* ur = (opal_btl_usnic_reg_t*)reg;
     int rc;
     static int id = 0;
-    rc = fi_mr_reg(mod->domain, base, size, 0, 0, ++id, 0, &ur->ur_mr, NULL);
+    uint64_t access_flag = 0;
+
+    access_flag |= FI_REMOTE_WRITE | FI_REMOTE_READ;
+    rc = fi_mr_reg(mod->domain, base, size, access_flag, 0, ++id, 0, &ur->ur_mr, NULL);
+
     if (0 != rc) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
+
+    ur->handle.rkey = fi_mr_key(ur->ur_mr);
+    ur->handle.desc = fi_mr_desc(ur->ur_mr);
 
     return OPAL_SUCCESS;
 }
@@ -2323,7 +2330,7 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_seg_size = sizeof(mca_btl_base_segment_t),
 #elif BTL_VERSION == 30
         .btl_atomic_flags = 0,
-        .btl_registration_handle_size = 0,
+        .btl_registration_handle_size = sizeof(mca_btl_base_registration_handle_t),
 
         .btl_get_limit = 0,
         .btl_get_alignment = 0,
