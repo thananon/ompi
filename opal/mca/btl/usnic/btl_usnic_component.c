@@ -1208,11 +1208,11 @@ static int usnic_handle_completion(
 {
     opal_btl_usnic_segment_t* seg;
     opal_btl_usnic_recv_segment_t* rseg;
-    opal_btl_usnic_put_segment_t* pseg;
+    opal_btl_usnic_put_segment_t* rdma_seg;
 
     seg = (opal_btl_usnic_segment_t*)completion->op_context;
     rseg = (opal_btl_usnic_recv_segment_t*)seg;
-    pseg = (opal_btl_usnic_put_segment_t*)seg;
+    rdma_seg = (opal_btl_usnic_rdma_segment_t*)seg;
 
     ++module->stats.num_seg_total_completions;
 
@@ -1245,7 +1245,11 @@ static int usnic_handle_completion(
         break;
 
     case OPAL_BTL_USNIC_SEG_PUT:
-	opal_btl_usnic_put_complete(module, pseg);
+	opal_btl_usnic_rdma_complete(module, rdma_seg);
+	break;
+
+    case OPAL_BTL_USNIC_SEG_GET:
+	opal_btl_usnic_rdma_complete(module, rdma_seg);
 	break;
 
     default:

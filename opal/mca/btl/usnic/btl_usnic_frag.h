@@ -69,7 +69,8 @@ typedef enum {
     OPAL_BTL_USNIC_SEG_FRAG,
     OPAL_BTL_USNIC_SEG_CHUNK,
     OPAL_BTL_USNIC_SEG_RECV,
-    OPAL_BTL_USNIC_SEG_PUT
+    OPAL_BTL_USNIC_SEG_PUT,
+    OPAL_BTL_USNIC_SEG_GET
 } opal_btl_usnic_seg_type_t;
 
 static inline const char *
@@ -80,6 +81,7 @@ usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
     case OPAL_BTL_USNIC_SEG_CHUNK: return "CHUNK";
     case OPAL_BTL_USNIC_SEG_RECV:  return "RECV";
     case OPAL_BTL_USNIC_SEG_PUT:   return "PUT";
+    case OPAL_BTL_USNIC_SEG_GET:   return "GET";
     default:                       return "unknown";
     }
 }
@@ -221,17 +223,20 @@ typedef struct opal_btl_usnic_send_segment_t {
 
 } opal_btl_usnic_send_segment_t;
 
-typedef struct opal_btl_usnic_put_segment_t {
-    opal_btl_usnic_segment_t ps_base;
-    opal_btl_usnic_endpoint_t *ps_endpoint;
+typedef struct opal_btl_usnic_rdma_segment_t {
+    opal_btl_usnic_segment_t seg_base;
+    opal_btl_usnic_endpoint_t *seg_endpoint;
 
-    mca_btl_base_descriptor_t ps_desc;
+    mca_btl_base_descriptor_t seg_desc;
     mca_btl_base_registration_handle_t *local_handle;
 
     void *local_address;
-    size_t ps_len;
+    size_t seg_len;
 
-} opal_btl_usnic_put_segment_t;
+} opal_btl_usnic_rdma_segment_t;
+
+typedef opal_btl_usnic_rdma_segment_t opal_btl_usnic_put_segment_t;
+typedef opal_btl_usnic_rdma_segment_t opal_btl_usnic_get_segment_t;
 
 typedef opal_btl_usnic_send_segment_t opal_btl_usnic_frag_segment_t;
 typedef opal_btl_usnic_send_segment_t opal_btl_usnic_chunk_segment_t;
@@ -325,11 +330,6 @@ typedef struct opal_btl_usnic_small_send_frag_t {
 } opal_btl_usnic_small_send_frag_t;
 
 /**
- * descriptor for a put destination
- */
-typedef opal_btl_usnic_frag_t opal_btl_usnic_put_dest_frag_t;
-
-/**
  * A simple buffer that can be enqueued on an opal_free_list_t that is intended
  * to be used for fragment reassembly.  Nominally the free list code supports
  * this via the rb_super.ptr field, but that field is only allocated and
@@ -344,11 +344,11 @@ typedef struct opal_btl_usnic_rx_buf_t {
 OBJ_CLASS_DECLARATION(opal_btl_usnic_send_frag_t);
 OBJ_CLASS_DECLARATION(opal_btl_usnic_small_send_frag_t);
 OBJ_CLASS_DECLARATION(opal_btl_usnic_large_send_frag_t);
-OBJ_CLASS_DECLARATION(opal_btl_usnic_put_dest_frag_t);
 
 OBJ_CLASS_DECLARATION(opal_btl_usnic_segment_t);
 OBJ_CLASS_DECLARATION(opal_btl_usnic_frag_segment_t);
 OBJ_CLASS_DECLARATION(opal_btl_usnic_chunk_segment_t);
+OBJ_CLASS_DECLARATION(opal_btl_usnic_rdma_segment_t);
 OBJ_CLASS_DECLARATION(opal_btl_usnic_recv_segment_t);
 
 OBJ_CLASS_DECLARATION(opal_btl_usnic_rx_buf_t);
@@ -400,29 +400,6 @@ opal_btl_usnic_large_send_frag_alloc(opal_btl_usnic_module_t *module)
 
     assert(frag);
     assert(OPAL_BTL_USNIC_FRAG_LARGE_SEND == frag->lsf_base.sf_base.uf_type);
-
-    return frag;
-}
-
-static inline opal_btl_usnic_put_dest_frag_t *
-opal_btl_usnic_put_dest_frag_alloc(
-    struct opal_btl_usnic_module_t *module)
-{
-    opal_free_list_item_t *item;
-    opal_btl_usnic_put_dest_frag_t *frag;
-
-    USNIC_COMPAT_FREE_LIST_GET(&(module->put_dest_frags), item);
-    if (OPAL_UNLIKELY(NULL == item)) {
-        return NULL;
-    }
-
-    frag = (opal_btl_usnic_put_dest_frag_t*) item;
-
-    /* this belongs in constructor... */
-    frag->uf_freelist = &(module->put_dest_frags);
-
-    assert(frag);
-    assert(OPAL_BTL_USNIC_FRAG_PUT_DEST == frag->uf_type);
 
     return frag;
 }
@@ -560,6 +537,35 @@ opal_btl_usnic_chunk_segment_return(
 
     USNIC_COMPAT_FREE_LIST_RETURN(&(module->chunk_segs), &(seg->ss_base.us_list));
 }
+
+static inline opal_btl_usnic_rdma_segment_t *
+opal_btl_usnic_rdma_segment_alloc(
+    opal_btl_usnic_module_t *module)
+{
+    opal_free_list_item_t *item;
+    opal_btl_usnic_rdma_segment_t *seg;
+
+    USNIC_COMPAT_FREE_LIST_GET(&(module->rdma_segs), item);
+    if (OPAL_UNLIKELY(NULL == item)) {
+        return NULL;
+    }
+
+    seg = (opal_btl_usnic_rdma_segment_t*) item;
+
+    assert(seg);
+    return seg;
+}
+
+static inline void
+opal_btl_usnic_rdma_segment_return(
+    opal_btl_usnic_module_t *module,
+    opal_btl_usnic_rdma_segment_t *seg)
+{
+    assert(seg);
+    USNIC_COMPAT_FREE_LIST_RETURN(&(module->rdma_segs), &(seg->seg_base.us_list));
+}
+
+
 
 /* Compute and set the proper value for sfrag->sf_size.  This must not be used
  * during usnic_alloc, since the PML might change the segment size after

@@ -172,8 +172,8 @@ typedef struct opal_btl_usnic_module_t {
     /** send fragments & buffers */
     opal_free_list_t small_send_frags;
     opal_free_list_t large_send_frags;
-    opal_free_list_t put_dest_frags;
     opal_free_list_t chunk_segs;
+    opal_free_list_t rdma_segs;
 
     /** receive buffer pools */
     int first_pool;

@@ -215,23 +215,6 @@ large_send_frag_constructor(opal_btl_usnic_large_send_frag_t *lfrag)
     lfrag->lsf_pack_on_the_fly = false;
 }
 
-static void
-put_dest_frag_constructor(opal_btl_usnic_put_dest_frag_t *pfrag)
-{
-    pfrag->uf_type = OPAL_BTL_USNIC_FRAG_PUT_DEST;
-
-    /* point dest to our utility segment */
-    pfrag->uf_base.USNIC_PUT_LOCAL = pfrag->uf_remote_seg;
-    pfrag->uf_base.USNIC_PUT_LOCAL_COUNT = 1;
-}
-
-static void
-put_dest_frag_destructor(opal_btl_usnic_put_dest_frag_t *pfrag)
-{
-    assert(pfrag->uf_base.USNIC_PUT_LOCAL == pfrag->uf_remote_seg);
-    assert(1 == pfrag->uf_base.USNIC_PUT_LOCAL_COUNT);
-}
-
 OBJ_CLASS_INSTANCE(opal_btl_usnic_segment_t,
                    opal_free_list_item_t,
                    NULL,
@@ -251,6 +234,11 @@ OBJ_CLASS_INSTANCE(opal_btl_usnic_recv_segment_t,
                    opal_btl_usnic_segment_t,
                    recv_seg_constructor,
                    NULL);
+
+OBJ_CLASS_INSTANCE(opal_btl_usnic_rdma_segment_t,
+		   opal_btl_usnic_segment_t,
+		   NULL,
+		   NULL);
 
 /*
  * Fragments
@@ -274,11 +262,6 @@ OBJ_CLASS_INSTANCE(opal_btl_usnic_small_send_frag_t,
                    opal_btl_usnic_send_frag_t,
                    small_send_frag_constructor,
                    small_send_frag_destructor);
-
-OBJ_CLASS_INSTANCE(opal_btl_usnic_put_dest_frag_t,
-                   opal_btl_usnic_frag_t,
-                   put_dest_frag_constructor,
-                   put_dest_frag_destructor);
 
 OBJ_CLASS_INSTANCE(opal_btl_usnic_rx_buf_t,
                    opal_free_list_item_t,
