@@ -558,53 +558,6 @@ opal_btl_usnic_prepare_src(
 }
 
 /*
- * BTL 2.0 prepare_dst function (this function does not exist in BTL
- * 3.0).
- */
-mca_btl_base_descriptor_t*
-opal_btl_usnic_prepare_dst(
-    struct mca_btl_base_module_t* base_module,
-    struct mca_btl_base_endpoint_t* endpoint,
-    struct mca_mpool_base_registration_t* registration,
-    struct opal_convertor_t* convertor,
-    uint8_t order,
-    size_t reserve,
-    size_t* size,
-    uint32_t flags)
-{
-    opal_btl_usnic_put_dest_frag_t *pfrag;
-    opal_btl_usnic_module_t *module;
-    void *data_ptr;
-
-    module = (opal_btl_usnic_module_t *)base_module;
-
-    /* allocate a fragment for this */
-    pfrag = (opal_btl_usnic_put_dest_frag_t *)
-        opal_btl_usnic_put_dest_frag_alloc(module);
-    if (NULL == pfrag) {
-        return NULL;
-    }
-
-    /* find start of the data */
-    opal_convertor_get_current_pointer(convertor, (void **) &data_ptr);
-
-    /* make a seg entry pointing at data_ptr */
-    pfrag->uf_remote_seg[0].seg_addr.pval = data_ptr;
-    pfrag->uf_remote_seg[0].seg_len = *size;
-
-    pfrag->uf_base.order       = order;
-    pfrag->uf_base.des_flags   = flags;
-
-#if MSGDEBUG2
-    opal_output(0, "prep_dst size=%d, addr=%p, pfrag=%p\n", (int)*size,
-            data_ptr, (void *)pfrag);
-#endif
-
-    return &pfrag->uf_base;
-}
-
-
-/*
  * BTL 2.0 version of module.btl_put.
  *
  * Emulate an RDMA put.  We'll send the remote address
@@ -765,17 +718,17 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
     opal_btl_usnic_module_t* module = (opal_btl_usnic_module_t*) base_module;
     opal_btl_usnic_channel_t *channel = &module->mod_channels[USNIC_DATA_CHANNEL];
     opal_btl_usnic_put_segment_t *pseg = (opal_btl_usnic_put_segment_t*)
-	    malloc(sizeof(opal_btl_usnic_put_segment_t));
+	    opal_btl_usnic_rdma_segment_alloc(module);
 
     /* Prepare all the information needed to handle to completion */
-    pseg->ps_base.us_type = OPAL_BTL_USNIC_SEG_PUT;
-    pseg->ps_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
-    pseg->ps_desc.des_cbdata = cbdata;
-    pseg->ps_desc.des_context = cbcontext;
-    pseg->ps_desc.order = order;
-    pseg->ps_desc.des_flags = flags;
-    pseg->ps_len = size;
-    pseg->ps_endpoint = endpoint;
+    pseg->seg_base.us_type = OPAL_BTL_USNIC_SEG_PUT;
+    pseg->seg_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
+    pseg->seg_desc.des_cbdata = cbdata;
+    pseg->seg_desc.des_context = cbcontext;
+    pseg->seg_desc.order = order;
+    pseg->seg_desc.des_flags = flags;
+    pseg->seg_len = size;
+    pseg->seg_endpoint = endpoint;
     pseg->local_address = local_address;
     pseg->local_handle = local_handle;
 
@@ -788,6 +741,51 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
     assert(ret == 0);
 
     return OPAL_SUCCESS;
+}
+
+int
+opal_btl_usnic_get(struct mca_btl_base_module_t *base_module,
+		   struct mca_btl_base_endpoint_t *endpoint,
+		   void* local_address, uint64_t remote_address,
+		   struct mca_btl_base_registration_handle_t *local_handle,
+		   struct mca_btl_base_registration_handle_t *remote_handle,
+		   size_t size, int flags, int order,
+		   mca_btl_base_rdma_completion_fn_t cbfunc,
+		   void *cbcontext, void *cbdata){
+
+    int ret;
+    opal_btl_usnic_module_t* module = (opal_btl_usnic_module_t*) base_module;
+    opal_btl_usnic_channel_t *channel = &module->mod_channels[USNIC_DATA_CHANNEL];
+    opal_btl_usnic_get_segment_t *gseg = (opal_btl_usnic_get_segment_t*)
+	    opal_btl_usnic_rdma_segment_alloc(module);
+
+    assert(gseg);
+
+    /* Prepare all the information needed to handle to completion */
+    gseg->seg_base.us_type = OPAL_BTL_USNIC_SEG_GET;
+    gseg->seg_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
+    gseg->seg_desc.des_cbdata = cbdata;
+    gseg->seg_desc.des_context = cbcontext;
+    gseg->seg_desc.order = order;
+    gseg->seg_desc.des_flags = flags;
+    gseg->seg_len = size;
+    gseg->seg_endpoint = endpoint;
+    gseg->local_address = local_address;
+    gseg->local_handle = local_handle;
+
+    /* Remote write the data across the wire */
+    ret = fi_read(channel->ep, local_address, size,
+                  local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
+	          remote_address, remote_handle->rkey, gseg);
+
+    /* catch the error for now, TODO: handle more appropriately */
+    assert(ret == 0);
+
+
+
+
+    return OPAL_SUCCESS;
+
 }
 
 #endif /* BTL_VERSION */

@@ -41,18 +41,17 @@
 #include "btl_usnic_rdma.h"
 
 void
-opal_btl_usnic_put_complete(opal_btl_usnic_module_t *module,
-		            opal_btl_usnic_put_segment_t *pseg){
+opal_btl_usnic_rdma_complete(opal_btl_usnic_module_t *module,
+		            opal_btl_usnic_rdma_segment_t *seg){
 
-    mca_btl_base_descriptor_t *desc = &pseg->ps_desc;
+    mca_btl_base_descriptor_t *desc = &seg->seg_desc;
     mca_btl_base_rdma_completion_fn_t func = (mca_btl_base_rdma_completion_fn_t) desc->des_cbfunc;
 
     /* Call the callback function */
-    func(&module->super, pseg->ps_endpoint, pseg->local_address,pseg->local_handle,
+    func(&module->super, seg->seg_endpoint, seg->local_address,seg->local_handle,
          desc->des_context, desc->des_cbdata, OPAL_SUCCESS);
     
     /* free the put segment */
     /* TODO : maybe make use of freelist structure */
-    free(pseg);
-    pseg = NULL;
+    opal_btl_usnic_rdma_segment_return(module,seg);
 }
