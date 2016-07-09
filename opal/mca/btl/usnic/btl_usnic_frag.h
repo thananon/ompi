@@ -69,7 +69,8 @@ typedef enum {
     OPAL_BTL_USNIC_SEG_FRAG,
     OPAL_BTL_USNIC_SEG_CHUNK,
     OPAL_BTL_USNIC_SEG_RECV,
-    OPAL_BTL_USNIC_SEG_PUT
+    OPAL_BTL_USNIC_SEG_PUT,
+    OPAL_BTL_USNIC_SEG_GET
 } opal_btl_usnic_seg_type_t;
 
 static inline const char *
@@ -80,6 +81,7 @@ usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
     case OPAL_BTL_USNIC_SEG_CHUNK: return "CHUNK";
     case OPAL_BTL_USNIC_SEG_RECV:  return "RECV";
     case OPAL_BTL_USNIC_SEG_PUT:   return "PUT";
+    case OPAL_BTL_USNIC_SEG_GET:   return "GET";
     default:                       return "unknown";
     }
 }

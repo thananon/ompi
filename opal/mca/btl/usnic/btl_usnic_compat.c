@@ -790,4 +790,47 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
     return OPAL_SUCCESS;
 }
 
+int
+opal_btl_usnic_get(struct mca_btl_base_module_t *base_module,
+		   struct mca_btl_base_endpoint_t *endpoint,
+		   void* local_address, uint64_t remote_address,
+		   struct mca_btl_base_registration_handle_t *local_handle,
+		   struct mca_btl_base_registration_handle_t *remote_handle,
+		   size_t size, int flags, int order,
+		   mca_btl_base_rdma_completion_fn_t cbfunc,
+		   void *cbcontext, void *cbdata){
+
+    int ret;
+    opal_btl_usnic_module_t* module = (opal_btl_usnic_module_t*) base_module;
+    opal_btl_usnic_channel_t *channel = &module->mod_channels[USNIC_DATA_CHANNEL];
+    opal_btl_usnic_put_segment_t *pseg = (opal_btl_usnic_put_segment_t*)
+	    malloc(sizeof(opal_btl_usnic_put_segment_t));
+
+    /* Prepare all the information needed to handle to completion */
+    pseg->ps_base.us_type = OPAL_BTL_USNIC_SEG_GET;
+    pseg->ps_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
+    pseg->ps_desc.des_cbdata = cbdata;
+    pseg->ps_desc.des_context = cbcontext;
+    pseg->ps_desc.order = order;
+    pseg->ps_desc.des_flags = flags;
+    pseg->ps_len = size;
+    pseg->ps_endpoint = endpoint;
+    pseg->local_address = local_address;
+    pseg->local_handle = local_handle;
+
+    /* Remote write the data across the wire */
+    ret = fi_read(channel->ep, local_address, size,
+                  local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
+	          remote_address, remote_handle->rkey, pseg);
+
+    /* catch the error for now, TODO: handle more appropriately */
+    assert(ret == 0);
+
+
+
+
+    return OPAL_SUCCESS;
+
+}
+
 #endif /* BTL_VERSION */

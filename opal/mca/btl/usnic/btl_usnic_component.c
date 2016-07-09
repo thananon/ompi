@@ -1206,6 +1206,10 @@ static int usnic_handle_completion(
 	opal_btl_usnic_put_complete(module, pseg);
 	break;
 
+    case OPAL_BTL_USNIC_SEG_GET:
+	opal_btl_usnic_put_complete(module, pseg);
+	break;
+
     default:
         BTL_ERROR(("Unhandled completion segment type %d", seg->us_type));
         break;

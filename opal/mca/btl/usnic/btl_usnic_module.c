@@ -2332,7 +2332,7 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_atomic_flags = 0,
         .btl_registration_handle_size = sizeof(mca_btl_base_registration_handle_t),
 
-        .btl_get_limit = 0,
+        .btl_get_limit = 1024 * 1024,
         .btl_get_alignment = 0,
         .btl_put_limit = 1024 * 1024,
         .btl_put_alignment = 0,
@@ -2352,6 +2352,7 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
             MCA_BTL_FLAGS_SINGLE_ADD_PROCS |
 	    /* experimental */
 	    MCA_BTL_FLAGS_PUT |
+	    MCA_BTL_FLAGS_GET |
 	    MCA_BTL_FLAGS_RDMA,
 
         .btl_add_procs = usnic_add_procs,
@@ -2365,7 +2366,7 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_send = usnic_send,
         .btl_sendi = NULL,
         .btl_put = opal_btl_usnic_put,
-        .btl_get = NULL,
+        .btl_get = opal_btl_usnic_get,
         .btl_dump = mca_btl_base_dump,
 
         .btl_mpool = NULL,
