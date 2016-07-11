@@ -733,9 +733,11 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
     pseg->local_handle = local_handle;
 
     /* Remote write the data across the wire */
+    OPAL_THREAD_LOCK(&btl_usnic_lock);
     ret = fi_write(channel->ep, local_address, size,
                   local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
 	          remote_address, remote_handle->rkey, pseg);
+    OPAL_THREAD_UNLOCK(&btl_usnic_lock);
 
     /* catch the error for now, TODO: handle more appropriately */
     assert(ret == 0);
@@ -774,10 +776,11 @@ opal_btl_usnic_get(struct mca_btl_base_module_t *base_module,
     gseg->local_handle = local_handle;
 
     /* Remote write the data across the wire */
+    OPAL_THREAD_LOCK(&btl_usnic_lock);
     ret = fi_read(channel->ep, local_address, size,
                   local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
 	          remote_address, remote_handle->rkey, gseg);
-
+    OPAL_THREAD_UNLOCK(&btl_usnic_lock);
     /* catch the error for now, TODO: handle more appropriately */
     assert(ret == 0);
 
