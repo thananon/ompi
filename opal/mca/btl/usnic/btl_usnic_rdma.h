@@ -14,7 +14,7 @@
 #include "btl_usnic_frag.h"
 
 
-void opal_btl_usnic_put_complete(opal_btl_usnic_module_t *module,
+void opal_btl_usnic_rdma_complete(opal_btl_usnic_module_t *module,
 		            opal_btl_usnic_put_segment_t *pseg);
 
 #endif

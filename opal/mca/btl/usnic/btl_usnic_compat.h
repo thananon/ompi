@@ -134,8 +134,6 @@ usnic_compat_proc_name_compare(opal_process_name_t a,
 #  define opal_btl_usnic_large_send_frag_t_class ompi_btl_usnic_large_send_frag_t_class
 #  define opal_btl_usnic_small_send_frag_t ompi_btl_usnic_small_send_frag_t
 #  define opal_btl_usnic_small_send_frag_t_class ompi_btl_usnic_small_send_frag_t_class
-#  define opal_btl_usnic_put_dest_frag_t ompi_btl_usnic_put_dest_frag_t
-#  define opal_btl_usnic_put_dest_frag_t_class ompi_btl_usnic_put_dest_frag_t_class
 #  define opal_btl_usnic_rx_buf_t ompi_btl_usnic_rx_buf_t
 #  define opal_btl_usnic_rx_buf_t_class ompi_btl_usnic_rx_buf_t_class
 #  define opal_btl_usnic_segment_t ompi_btl_usnic_segment_t

@@ -875,7 +875,7 @@ static int usnic_finalize(struct mca_btl_base_module_t* btl)
     OBJ_DESTRUCT(&module->endpoints_with_sends);
     OBJ_DESTRUCT(&module->small_send_frags);
     OBJ_DESTRUCT(&module->large_send_frags);
-    OBJ_DESTRUCT(&module->put_dest_frags);
+    OBJ_DESTRUCT(&module->rdma_segs);
     OBJ_DESTRUCT(&module->chunk_segs);
     OBJ_DESTRUCT(&module->senders);
 
@@ -2194,24 +2194,6 @@ static void init_freelists(opal_btl_usnic_module_t *module)
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
 
-    OBJ_CONSTRUCT(&module->put_dest_frags, opal_free_list_t);
-    rc = usnic_compat_free_list_init(&module->put_dest_frags,
-                             sizeof(opal_btl_usnic_put_dest_frag_t) +
-                                 mca_btl_usnic_component.prefix_send_offset,
-                             opal_cache_line_size,
-                             OBJ_CLASS(opal_btl_usnic_put_dest_frag_t),
-                             0,  /* payload size */
-                             0,  /* payload align */
-                             module->sd_num / 8,
-                             -1,
-                             module->sd_num / 8,
-                             NULL,
-                             0 /* mpool reg flags */,
-                             NULL /* unused0 */,
-                             NULL /* item_init */,
-                             NULL /* item_init_context */);
-    assert(OPAL_SUCCESS == rc);
-
     /* list of segments to use for sending */
     OBJ_CONSTRUCT(&module->chunk_segs, opal_free_list_t);
     rc = usnic_compat_free_list_init(&module->chunk_segs,
@@ -2230,6 +2212,25 @@ static void init_freelists(opal_btl_usnic_module_t *module)
                              NULL /* item_init */,
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
+
+    OBJ_CONSTRUCT(&module->rdma_segs, opal_free_list_t);
+    rc = usnic_compat_free_list_init(&module->rdma_segs,
+                             sizeof(opal_btl_usnic_rdma_segment_t) +
+                                 mca_btl_usnic_component.prefix_send_offset,
+                             opal_cache_line_size,
+                             OBJ_CLASS(opal_btl_usnic_rdma_segment_t),
+                             0,
+                             0,
+                             module->sd_num / 8,
+                             -1,
+                             module->sd_num / 8,
+                             NULL,
+                             0 /* mpool reg flags */,
+                             NULL,
+                             NULL /* item_init */,
+                             NULL /* item_init_context */);
+    assert(OPAL_SUCCESS == rc);
+
 
         /*
      * Initialize pools of large recv buffers
