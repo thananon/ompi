@@ -134,8 +134,6 @@ usnic_compat_proc_name_compare(opal_process_name_t a,
 #  define opal_btl_usnic_large_send_frag_t_class ompi_btl_usnic_large_send_frag_t_class
 #  define opal_btl_usnic_small_send_frag_t ompi_btl_usnic_small_send_frag_t
 #  define opal_btl_usnic_small_send_frag_t_class ompi_btl_usnic_small_send_frag_t_class
-#  define opal_btl_usnic_put_dest_frag_t ompi_btl_usnic_put_dest_frag_t
-#  define opal_btl_usnic_put_dest_frag_t_class ompi_btl_usnic_put_dest_frag_t_class
 #  define opal_btl_usnic_rx_buf_t ompi_btl_usnic_rx_buf_t
 #  define opal_btl_usnic_rx_buf_t_class ompi_btl_usnic_rx_buf_t_class
 #  define opal_btl_usnic_segment_t ompi_btl_usnic_segment_t
@@ -360,6 +358,17 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
                    size_t size, int flags, int order,
                    mca_btl_base_rdma_completion_fn_t cbfunc,
                    void *cbcontext, void *cbdata);
+
+int
+opal_btl_usnic_get(struct mca_btl_base_module_t *base_module,
+                   struct mca_btl_base_endpoint_t *endpoint,
+                   void *local_address, uint64_t remote_address,
+                   struct mca_btl_base_registration_handle_t *local_handle,
+                   struct mca_btl_base_registration_handle_t *remote_handle,
+                   size_t size, int flags, int order,
+                   mca_btl_base_rdma_completion_fn_t cbfunc,
+                   void *cbcontext, void *cbdata);
+
 
 #endif /* BTL_VERSION */
 
