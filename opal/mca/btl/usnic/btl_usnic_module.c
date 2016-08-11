@@ -1280,7 +1280,7 @@ usnic_send(
          * another file entirely, else the compiler tried to be helpful
          * and inline all by itself.
          */
-        rc = opal_btl_usnic_finish_put_or_send(module, endpoint, frag, tag);
+        rc = opal_btl_usnic_finish_send(module, endpoint, frag, tag);
         /* FIXME can we clarify flag set/clear ordering? */
         frag->sf_base.uf_base.des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     }

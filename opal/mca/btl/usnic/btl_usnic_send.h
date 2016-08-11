@@ -215,7 +215,7 @@ void opal_btl_usnic_chunk_send_complete(opal_btl_usnic_module_t *module,
                                     opal_btl_usnic_send_segment_t *sseg);
 
 int
-opal_btl_usnic_finish_put_or_send(
+opal_btl_usnic_finish_send(
     opal_btl_usnic_module_t *module,
     opal_btl_usnic_endpoint_t *endpoint,
     opal_btl_usnic_send_frag_t *frag,

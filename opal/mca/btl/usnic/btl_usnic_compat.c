@@ -601,7 +601,7 @@ int opal_btl_usnic_put(
     frag->sf_base.uf_remote_seg[0].seg_addr.pval =
         desc->USNIC_PUT_REMOTE->seg_addr.pval;
 
-    rc = opal_btl_usnic_finish_put_or_send((opal_btl_usnic_module_t *)btl,
+    rc = opal_btl_usnic_finish_send((opal_btl_usnic_module_t *)btl,
                                            (opal_btl_usnic_endpoint_t *)endpoint,
                                            frag,
                                            /*tag=*/MCA_BTL_NO_ORDER);
