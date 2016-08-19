@@ -15,16 +15,21 @@
 
 static opal_mutex_t wait_sync_lock = OPAL_MUTEX_STATIC_INIT;
 static ompi_wait_sync_t* wait_sync_list = NULL;
+static struct timespec spec;
 
 #define WAIT_SYNC_PASS_OWNERSHIP(who)                  \
     do {                                               \
         pthread_mutex_lock( &(who)->lock);             \
         pthread_cond_signal( &(who)->condition );      \
+        (who)->wakeup = 1;                          \
         pthread_mutex_unlock( &(who)->lock);           \
     } while(0)
 
 int sync_wait_mt(ompi_wait_sync_t *sync)
 {
+    spec.tv_sec = 0;
+    spec.tv_nsec = 50;
+
     if(sync->count <= 0)
         return (0 == sync->status) ? OPAL_SUCCESS : OPAL_ERROR;
 
@@ -36,6 +41,7 @@ int sync_wait_mt(ompi_wait_sync_t *sync)
     if( NULL == wait_sync_list ) {
         sync->next = sync->prev = sync;
         wait_sync_list = sync;
+        sync->wakeup = 1;
     } else {
         sync->prev = wait_sync_list->prev;
         sync->prev->next = sync;
@@ -51,16 +57,23 @@ int sync_wait_mt(ompi_wait_sync_t *sync)
      */
  check_status:
     if( sync != wait_sync_list ) {
-        pthread_cond_wait(&sync->condition, &sync->lock);
-
+        //pthread_cond_wait(&sync->condition, &sync->lock);
+        while(!sync->wakeup){
+            opal_output(0, "sync %p going to sleep",sync);
+            nanosleep(&spec, NULL);
+            if(sync->count == 0 || sync == wait_sync_list ) break;
+	    }
+        opal_output(0,"sync %p wake up with count = %d, next sync = %p",
+                sync, sync->count, wait_sync_list);
         /**
          * At this point either the sync was completed in which case
          * we should remove it from the wait list, or/and I was
          * promoted as the progress manager.
          */
-
+        assert(sync == wait_sync_list || sync->count == 0);
         if( sync->count <= 0 ) {  /* Completed? */
             pthread_mutex_unlock(&sync->lock);
+            opal_output(0,"sync %p is done, getting out");
             goto i_am_done;
         }
         /* either promoted, or spurious wakeup ! */
@@ -81,6 +94,7 @@ int sync_wait_mt(ompi_wait_sync_t *sync)
     /* In case I am the progress manager, pass the duties on */
     if( sync == wait_sync_list ) {
         wait_sync_list = (sync == sync->next) ? NULL : sync->next;
+        opal_output(0,"pass to next sync -> %p",wait_sync_list);
         if( NULL != wait_sync_list )
             WAIT_SYNC_PASS_OWNERSHIP(wait_sync_list);
     }

@@ -26,6 +26,7 @@ typedef struct ompi_wait_sync_t {
     struct ompi_wait_sync_t *next;
     struct ompi_wait_sync_t *prev;
     volatile bool signaling;
+    volatile int wakeup;
 } ompi_wait_sync_t;
 
 #define REQUEST_PENDING        (void*)0L
@@ -48,12 +49,14 @@ typedef struct ompi_wait_sync_t {
         }                                             \
         pthread_cond_destroy(&(sync)->condition);     \
         pthread_mutex_destroy(&(sync)->lock);         \
+        (sync)->wakeup = 0;                         \
     }
 
 #define WAIT_SYNC_RELEASE_NOWAIT(sync)                \
     if (opal_using_threads()) {                       \
         pthread_cond_destroy(&(sync)->condition);     \
         pthread_mutex_destroy(&(sync)->lock);         \
+        (sync)->wakeup = 0;                         \
     }
 
 
@@ -61,13 +64,14 @@ typedef struct ompi_wait_sync_t {
     if (opal_using_threads()) {                       \
         pthread_mutex_lock(&(sync->lock));            \
         pthread_cond_signal(&sync->condition);        \
+	    sync->wakeup = 1;                          \
         pthread_mutex_unlock(&(sync->lock));          \
         sync->signaling = false;                      \
     }
 
 #define WAIT_SYNC_SIGNALLED(sync){                    \
         (sync)->signaling = false;                    \
-}        
+}
 
 OPAL_DECLSPEC int sync_wait_mt(ompi_wait_sync_t *sync);
 static inline int sync_wait_st (ompi_wait_sync_t *sync)
@@ -86,7 +90,8 @@ static inline int sync_wait_st (ompi_wait_sync_t *sync)
         (sync)->next = NULL;                                    \
         (sync)->prev = NULL;                                    \
         (sync)->status = 0;                                     \
-        (sync)->signaling = true;                               \
+        (sync)->signaling = false;                              \
+        (sync)->wakeup = 0;                              \
         if (opal_using_threads()) {                             \
             pthread_cond_init (&(sync)->condition, NULL);       \
             pthread_mutex_init (&(sync)->lock, NULL);           \
