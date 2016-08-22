@@ -62,10 +62,7 @@ typedef struct ompi_wait_sync_t {
 
 #define WAIT_SYNC_SIGNAL(sync)                        \
     if (opal_using_threads()) {                       \
-        pthread_mutex_lock(&(sync->lock));            \
-        pthread_cond_signal(&sync->condition);        \
 	    sync->wakeup = 1;                          \
-        pthread_mutex_unlock(&(sync->lock));          \
         sync->signaling = false;                      \
     }
 
