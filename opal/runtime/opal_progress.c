@@ -27,6 +27,7 @@
 #ifdef HAVE_SCHED_H
 #include <sched.h>
 #endif
+#include <time.h>
 
 #include "opal/runtime/opal_progress.h"
 #include "opal/mca/event/event.h"
@@ -43,7 +44,7 @@
 static opal_thread_t opal_async_thread = { 0 };
 void* opal_progress_thread_engine(void);
 volatile int main_thread_in_progress = 0;
-opal_mutex_t opal_progress_lock;
+opal_recursive_mutex_t opal_progress_lock;
 
 #if OPAL_ENABLE_DEBUG
 bool opal_progress_debug = false;
@@ -151,7 +152,7 @@ opal_progress_init(void)
 
     /* Experimental opal progress thread */
     OBJ_CONSTRUCT(&opal_async_thread, opal_thread_t);
-    OBJ_CONSTRUCT(&opal_progress_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&opal_progress_lock, opal_recursive_mutex_t);
 
     opal_async_thread.t_run = opal_progress_thread_engine;
 
@@ -266,8 +267,11 @@ void*
 opal_progress_thread_engine(void)
 {
     static volatile uint32_t num_calls = 0;
+    static struct timespec spintime;
     size_t i;
     int events = 0;
+    spintime.tv_sec = 0;
+    spintime.tv_nsec = 1000;
     while(1){
         opal_mutex_lock(&opal_progress_lock);
 
@@ -326,7 +330,7 @@ opal_progress_thread_engine(void)
 #endif  /* defined(HAVE_SCHED_YIELD) */
     opal_mutex_unlock(&opal_progress_lock);
     if(main_thread_in_progress){
-        sleep(1);
+        nanosleep(&spintime ,NULL);
     }
     }
 }
