@@ -20,6 +20,7 @@
 
 #include "opal/sys/atomic.h"
 #include "opal/threads/condition.h"
+#include "opal/runtime/opal_progress.h"
 #include <pthread.h>
 
 BEGIN_C_DECLS
@@ -78,10 +79,13 @@ typedef struct ompi_wait_sync_t {
 OPAL_DECLSPEC int sync_wait_mt(ompi_wait_sync_t *sync);
 static inline int sync_wait_st (ompi_wait_sync_t *sync)
 {
+    main_thread_in_progress = 1;
+    opal_mutex_lock(&opal_progress_lock);
     while (sync->count > 0) {
         opal_progress();
     }
-
+    main_thread_in_progress = 0;
+    opal_mutex_unlock(&opal_progress_lock);
     return sync->status;
 }
 

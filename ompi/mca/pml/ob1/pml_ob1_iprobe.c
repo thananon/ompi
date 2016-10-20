@@ -127,7 +127,6 @@ mca_pml_ob1_improbe(int src,
         MCA_PML_OB1_RECV_REQUEST_RETURN( recvreq );
         ompi_message_return(*message);
         *message = MPI_MESSAGE_NULL;
-
         opal_progress();
     }
 

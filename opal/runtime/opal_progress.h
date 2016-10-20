@@ -197,6 +197,8 @@ static inline bool opal_progress_spin(volatile bool* complete)
     return false;
 }
 
+extern volatile int main_thread_in_progress;
+extern opal_recursive_mutex_t opal_progress_lock;
 
 END_C_DECLS
 

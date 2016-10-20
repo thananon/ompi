@@ -374,7 +374,7 @@ static inline int ompi_request_free(ompi_request_t** request)
 
 static inline void ompi_request_wait_completion(ompi_request_t *req)
 {
-    if (opal_using_threads () && !REQUEST_COMPLETE(req)) {
+    if (!REQUEST_COMPLETE(req)) {
         ompi_wait_sync_t sync;
         WAIT_SYNC_INIT(&sync, 1);
 
@@ -387,10 +387,6 @@ static inline void ompi_request_wait_completion(ompi_request_t *req)
 
         assert(REQUEST_COMPLETE(req));
         WAIT_SYNC_RELEASE(&sync);
-    } else {
-        while(!REQUEST_COMPLETE(req)) {
-            opal_progress();
-        }
     }
 }
 
