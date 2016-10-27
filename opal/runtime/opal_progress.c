@@ -266,8 +266,11 @@ opal_progress_thread_engine(void)
 
     /* while not done */
     static struct timespec sleeptime;
+    static struct timespec long_sleeptime;
     sleeptime.tv_sec = 0;
     sleeptime.tv_nsec = 100;
+    long_sleeptime.tv_sec = 0;
+    long_sleeptime.tv_nsec = 500;
     while(1){
 
         if(0 == main_thread_in_progress){
@@ -276,6 +279,7 @@ opal_progress_thread_engine(void)
                 opal_progress();
             }
             opal_mutex_unlock(&opal_progress_lock);
+            nanosleep(&long_sleeptime, NULL);
         }
         else{
             nanosleep(&sleeptime, NULL);
