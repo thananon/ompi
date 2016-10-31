@@ -86,6 +86,10 @@ static inline int sync_wait_st (ompi_wait_sync_t *sync)
     }
     main_thread_in_progress = 0;
     opal_mutex_unlock(&opal_progress_lock);
+
+    pthread_mutex_lock(&opal_sleep_lock);
+    pthread_cond_signal(&opal_progress_cond);
+    pthread_mutex_unlock(&opal_sleep_lock);
     return sync->status;
 }
 

@@ -41,10 +41,12 @@
 #define OPAL_PROGRESS_USE_TIMERS (OPAL_TIMER_CYCLE_SUPPORTED || OPAL_TIMER_USEC_SUPPORTED)
 
 /* OPAL asynchronous progress thread stuff */
-static opal_thread_t opal_async_thread = { 0 };
+opal_thread_t opal_async_thread = { 0 };
 void* opal_progress_thread_engine(void);
 volatile int main_thread_in_progress = 0;
 opal_recursive_mutex_t opal_progress_lock;
+pthread_cond_t opal_progress_cond;
+pthread_mutex_t opal_sleep_lock;
 
 #if OPAL_ENABLE_DEBUG
 bool opal_progress_debug = false;
@@ -271,6 +273,9 @@ opal_progress_thread_engine(void)
     sleeptime.tv_nsec = 100;
     long_sleeptime.tv_sec = 0;
     long_sleeptime.tv_nsec = 500;
+
+    pthread_cond_init(&opal_progress_cond, NULL);
+    pthread_mutex_init(&opal_sleep_lock, NULL);
     while(1){
 
         if(0 == main_thread_in_progress){
@@ -282,7 +287,9 @@ opal_progress_thread_engine(void)
             nanosleep(&long_sleeptime, NULL);
         }
         else{
-            nanosleep(&sleeptime, NULL);
+            pthread_mutex_lock(&opal_sleep_lock);
+            pthread_cond_wait(&opal_progress_cond,&opal_sleep_lock);
+            pthread_mutex_unlock(&opal_sleep_lock);
         }
     }
 }
