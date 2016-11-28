@@ -37,16 +37,14 @@
 #include "opal/util/output.h"
 #include "opal/runtime/opal_params.h"
 #include "opal/runtime/opal_progress_threads.h"
+#include "opal/threads/wait_sync.h"
 
 #define OPAL_PROGRESS_USE_TIMERS (OPAL_TIMER_CYCLE_SUPPORTED || OPAL_TIMER_USEC_SUPPORTED)
 
 /* OPAL asynchronous progress thread stuff */
 opal_thread_t opal_async_thread = { 0 };
+ompi_wait_sync_t progress_sync = { 0 };
 void* opal_progress_thread_engine(void);
-volatile int main_thread_in_progress = 0;
-opal_recursive_mutex_t opal_progress_lock;
-pthread_cond_t opal_progress_cond;
-pthread_mutex_t opal_sleep_lock;
 
 #if OPAL_ENABLE_DEBUG
 bool opal_progress_debug = false;
@@ -154,7 +152,6 @@ opal_progress_init(void)
 
     /* Experimental opal progress thread */
     OBJ_CONSTRUCT(&opal_async_thread, opal_thread_t);
-    OBJ_CONSTRUCT(&opal_progress_lock, opal_recursive_mutex_t);
 
     opal_async_thread.t_run = opal_progress_thread_engine;
     opal_set_using_threads(true);
@@ -173,6 +170,8 @@ opal_progress_finalize(void)
 {
     /* free memory associated with the callbacks */
     opal_atomic_lock(&progress_lock);
+
+    wait_sync_update(&progress_sync, 1, OPAL_SUCCESS);
 
     callbacks_len = 0;
     callbacks_size = 0;
@@ -265,33 +264,9 @@ opal_progress(void)
 void*
 opal_progress_thread_engine(void)
 {
+    WAIT_SYNC_INIT(&progress_sync,1);
+    SYNC_WAIT(&progress_sync);
 
-    /* while not done */
-    static struct timespec sleeptime;
-    static struct timespec long_sleeptime;
-    sleeptime.tv_sec = 0;
-    sleeptime.tv_nsec = 100;
-    long_sleeptime.tv_sec = 0;
-    long_sleeptime.tv_nsec = 500;
-
-    pthread_cond_init(&opal_progress_cond, NULL);
-    pthread_mutex_init(&opal_sleep_lock, NULL);
-    while(1){
-
-        if(0 == main_thread_in_progress){
-            opal_mutex_lock(&opal_progress_lock);
-            while(0==main_thread_in_progress){
-                opal_progress();
-            }
-            opal_mutex_unlock(&opal_progress_lock);
-            nanosleep(&long_sleeptime, NULL);
-        }
-        else{
-            pthread_mutex_lock(&opal_sleep_lock);
-            pthread_cond_wait(&opal_progress_cond,&opal_sleep_lock);
-            pthread_mutex_unlock(&opal_sleep_lock);
-        }
-    }
 }
 
 
