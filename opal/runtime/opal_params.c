@@ -73,6 +73,8 @@ int opal_abort_delay = 0;
 
 static bool opal_register_done = false;
 
+int mca_base_opal_async_thread = 0;
+
 int opal_register_params(void)
 {
     int ret;
@@ -352,6 +354,10 @@ int opal_register_params(void)
             MCA_BASE_VAR_TYPE_STRING, NULL, 0, MCA_BASE_VAR_FLAG_INTERNAL, OPAL_INFO_LVL_3,
             MCA_BASE_VAR_SCOPE_READONLY, &mca_base_env_list_internal);
 
+    (void)mca_base_var_register ("opal", "mca", "base", "async_progress_thread",
+            "Asynchronous Progress thread",
+            MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_3,
+            MCA_BASE_VAR_FLAG_SETTABLE, &mca_base_opal_async_thread);
     /* The ddt engine has a few parameters */
     ret = opal_datatype_register_params();
     if (OPAL_SUCCESS != ret) {

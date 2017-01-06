@@ -150,17 +150,18 @@ opal_progress_init(void)
     OPAL_OUTPUT((debug_output, "progress: initialized poll rate to: %ld",
                  (long) event_progress_delta));
 
-    /* Experimental opal progress thread */
-    OBJ_CONSTRUCT(&opal_async_thread, opal_thread_t);
+    if(mca_base_opal_async_thread){
+        /* Experimental opal progress thread */
+        OBJ_CONSTRUCT(&opal_async_thread, opal_thread_t);
 
-    opal_async_thread.t_run = opal_progress_thread_engine;
-    opal_set_using_threads(true);
+        opal_async_thread.t_run = opal_progress_thread_engine;
+        opal_set_using_threads(true);
 
-    if( OPAL_SUCCESS != opal_thread_start(&opal_async_thread)){
-        assert(0);
-        opal_output(0,"thread start failed");
+        if( OPAL_SUCCESS != opal_thread_start(&opal_async_thread)){
+            assert(0);
+            opal_output(0,"thread start failed");
+        }
     }
-
     return OPAL_SUCCESS;
 }
 

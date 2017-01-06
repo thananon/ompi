@@ -73,6 +73,8 @@ OPAL_DECLSPEC extern bool opal_abort_print_stack;
  */
 OPAL_DECLSPEC extern int opal_abort_delay;
 
+OPAL_DECLSPEC extern int mca_base_opal_async_thread;
+
 #if OPAL_ENABLE_DEBUG
 extern bool opal_progress_debug;
 #endif
