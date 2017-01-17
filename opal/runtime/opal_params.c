@@ -201,8 +201,7 @@ int opal_register_params(void)
 				 &opal_set_max_sys_limits);
     if (0 > ret) {
         return ret;
-    }
-
+    } 
     ret = mca_base_var_register("opal", "opal", NULL, "built_with_cuda_support",
                                 "Whether CUDA GPU buffer support is built into library or not",
                                 MCA_BASE_VAR_TYPE_BOOL, NULL, 0, MCA_BASE_VAR_FLAG_DEFAULT_ONLY,
@@ -354,10 +353,12 @@ int opal_register_params(void)
             MCA_BASE_VAR_TYPE_STRING, NULL, 0, MCA_BASE_VAR_FLAG_INTERNAL, OPAL_INFO_LVL_3,
             MCA_BASE_VAR_SCOPE_READONLY, &mca_base_env_list_internal);
 
-    (void)mca_base_var_register ("opal", "mca", "base", "async_progress_thread",
+    /* Register MCA variable to turn on asynchronous progress for BTLs */
+    (void)mca_base_var_register ("opal", "opal", NULL, "async_progress_thread",
             "Asynchronous Progress thread",
-            MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, OPAL_INFO_LVL_3,
-            MCA_BASE_VAR_FLAG_SETTABLE, &mca_base_opal_async_thread);
+            MCA_BASE_VAR_TYPE_INT, NULL, 0, MCA_BASE_VAR_FLAG_SETTABLE,
+            OPAL_INFO_LVL_3,MCA_BASE_VAR_SCOPE_LOCAL, 
+            &mca_base_opal_async_thread);
     /* The ddt engine has a few parameters */
     ret = opal_datatype_register_params();
     if (OPAL_SUCCESS != ret) {
