@@ -39,7 +39,8 @@ headers += \
         class/opal_value_array.h \
         class/opal_ring_buffer.h \
         class/opal_rb_tree.h \
-        class/opal_interval_tree.h
+        class/opal_interval_tree.h \
+		class/opal_task.h
 
 lib@OPAL_LIB_PREFIX@open_pal_la_SOURCES += \
         class/opal_bitmap.c \
@@ -56,4 +57,5 @@ lib@OPAL_LIB_PREFIX@open_pal_la_SOURCES += \
         class/opal_value_array.c \
         class/opal_ring_buffer.c \
         class/opal_rb_tree.c \
-        class/opal_interval_tree.c
+        class/opal_interval_tree.c \
+	    class/opal_task.c
