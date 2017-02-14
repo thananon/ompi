@@ -1373,24 +1373,22 @@ ib_frag_alloc(mca_btl_openib_module_t *btl, size_t size, uint8_t order,
 }
 
 /* check if pending fragment has enough space for coalescing */
-static mca_btl_openib_send_frag_t *check_coalescing(opal_list_t *frag_list,
+static mca_btl_openib_send_frag_t *check_coalescing(opal_fifo_t *frag_list,
     opal_mutex_t *lock, struct mca_btl_base_endpoint_t *ep, size_t size,
     mca_btl_openib_coalesced_frag_t **cfrag)
 {
     mca_btl_openib_send_frag_t *frag = NULL;
 
-    if (opal_list_is_empty(frag_list))
+    if (opal_fifo_is_empty(frag_list))
         return NULL;
 
-    OPAL_THREAD_LOCK(lock);
-    if (!opal_list_is_empty(frag_list)) {
+    if (!opal_fifo_is_empty(frag_list)) {
         int qp;
         size_t total_length;
-        opal_list_item_t *i = opal_list_get_first(frag_list);
+        opal_list_item_t *i = opal_fifo_pop(frag_list);
         frag = to_send_frag(i);
         if(to_com_frag(frag)->endpoint != ep ||
                 MCA_BTL_OPENIB_FRAG_CONTROL == openib_frag_type(frag)) {
-            OPAL_THREAD_UNLOCK(lock);
             return NULL;
         }
 
@@ -1407,7 +1405,7 @@ static mca_btl_openib_send_frag_t *check_coalescing(opal_list_t *frag_list,
                 (*cfrag)->send_frag = frag;
                 (*cfrag)->sent = false;
 
-                opal_list_remove_first(frag_list);
+                opal_fifo_pop(frag_list);
             } else {
                 frag = NULL;
             }
@@ -1415,7 +1413,6 @@ static mca_btl_openib_send_frag_t *check_coalescing(opal_list_t *frag_list,
             frag = NULL;
         }
     }
-    OPAL_THREAD_UNLOCK(lock);
 
     return frag;
 }
@@ -1793,7 +1790,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     }
 
     /* If it is pending messages on the qp - we can not send */
-    if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
+    if(OPAL_UNLIKELY(!opal_fifo_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
         goto cant_send;
     }
 

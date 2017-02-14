@@ -2276,9 +2276,9 @@ static int finish_btl_init(mca_btl_openib_module_t *openib_btl)
     for (qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
         if (!BTL_OPENIB_QP_TYPE_PP(qp)) {
             OBJ_CONSTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[0],
-                    opal_list_t);
+                    opal_fifo_t);
             OBJ_CONSTRUCT(&openib_btl->qps[qp].u.srq_qp.pending_frags[1],
-                    opal_list_t);
+                    opal_fifo_t);
             openib_btl->qps[qp].u.srq_qp.sd_credits =
                 mca_btl_openib_component.qp_infos[qp].u.srq_qp.sd_max;
             openib_btl->qps[qp].u.srq_qp.srq = NULL;
@@ -2935,7 +2935,7 @@ btl_openib_component_init(int *num_btl_modules,
  */
 static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
 {
-    int qp, pri, rc, len;
+    int qp, pri, rc;
     opal_list_item_t *frag;
 
     OPAL_THREAD_LOCK(&ep->endpoint_lock);
@@ -2974,12 +2974,11 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
                  credits (because the hardware will continually
                  retransmit for us).
             */
-            for (len = opal_list_get_size(&ep->qps[qp].no_credits_pending_frags[pri]);
-                 len > 0 &&
+            while (!opal_fifo_is_empty(&ep->qps[qp].no_credits_pending_frags[pri]) &&
                      (ep->eager_rdma_remote.tokens > 0 ||
                       ep->qps[qp].u.pp_qp.sd_credits > 0 ||
-                      !BTL_OPENIB_QP_TYPE_PP(qp)); --len) {
-                frag = opal_list_remove_first(&ep->qps[qp].no_credits_pending_frags[pri]);
+                      !BTL_OPENIB_QP_TYPE_PP(qp))) {
+                frag = opal_fifo_pop_atomic(&ep->qps[qp].no_credits_pending_frags[pri]);
                 assert (NULL != frag);
 
                 /* If _endpoint_post_send() fails because of
@@ -3015,38 +3014,28 @@ void mca_btl_openib_frag_progress_pending_put_get(mca_btl_base_endpoint_t *ep,
 {
     mca_btl_openib_module_t* openib_btl = ep->endpoint_btl;
     opal_list_item_t *frag;
-    size_t i, len = opal_list_get_size(&ep->pending_get_frags);
     int rc;
 
-    for(i = 0; i < len && ep->qps[qp].qp->sd_wqe > 0 && ep->get_tokens > 0; i++) {
-        OPAL_THREAD_LOCK(&ep->endpoint_lock);
-        frag = opal_list_remove_first(&(ep->pending_get_frags));
-        OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+    while(!opal_fifo_is_empty(&ep->pending_get_frags) && ep->qps[qp].qp->sd_wqe > 0 && ep->get_tokens > 0) {
+        frag = opal_fifo_pop(&(ep->pending_get_frags));
         if (NULL == frag)
             break;
         rc = mca_btl_openib_get_internal ((mca_btl_base_module_t *)openib_btl, ep,
                                           to_get_frag(frag));
         if (OPAL_ERR_OUT_OF_RESOURCE == rc) {
-            OPAL_THREAD_LOCK(&ep->endpoint_lock);
-            opal_list_prepend (&ep->pending_get_frags, frag);
-            OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+            opal_fifo_push (&ep->pending_get_frags, frag);
             break;
         }
     }
 
-    len = opal_list_get_size(&ep->pending_put_frags);
-    for(i = 0; i < len && ep->qps[qp].qp->sd_wqe > 0; i++) {
-        OPAL_THREAD_LOCK(&ep->endpoint_lock);
-        frag = opal_list_remove_first(&(ep->pending_put_frags));
-        OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+    while(!opal_fifo_is_empty(&ep->pending_put_frags) && ep->qps[qp].qp->sd_wqe > 0) {
+        frag = opal_fifo_pop(&(ep->pending_put_frags));
         if (NULL == frag)
             break;
         rc = mca_btl_openib_put_internal ((mca_btl_base_module_t*)openib_btl, ep,
                                           to_put_frag(frag));
         if (OPAL_ERR_OUT_OF_RESOURCE == rc) {
-            OPAL_THREAD_LOCK(&ep->endpoint_lock);
-            opal_list_prepend (&ep->pending_put_frags, frag);
-            OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+            opal_fifo_push (&ep->pending_put_frags, frag);
             break;
         }
     }
@@ -3345,7 +3334,7 @@ progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
     for(int i = 0; i < 2; i++) {
        while(qp->sd_wqe > 0) {
             mca_btl_base_endpoint_t *tmp_ep;
-            frag = opal_list_remove_first(&ep->qps[qpn].no_wqe_pending_frags[i]);
+            frag = opal_fifo_pop(&ep->qps[qpn].no_wqe_pending_frags[i]);
             if(NULL == frag)
                 break;
             assert(0 == frag->opal_list_item_refcount);
@@ -3355,7 +3344,7 @@ progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
                 /* NTH: this handles retrying if we are out of credits but other errors are not
                  * handled (maybe abort?). */
                 if (OPAL_ERR_RESOURCE_BUSY != ret) {
-                    opal_list_prepend (&ep->qps[qpn].no_wqe_pending_frags[i], (opal_list_item_t *) frag);
+                    opal_fifo_push (&ep->qps[qpn].no_wqe_pending_frags[i], (opal_list_item_t *) frag);
                 }
                 break;
             }
@@ -3375,7 +3364,7 @@ static void progress_pending_frags_srq(mca_btl_openib_module_t* openib_btl,
     for(i = 0; i < 2; i++) {
         while(openib_btl->qps[qp].u.srq_qp.sd_credits > 0) {
             OPAL_THREAD_LOCK(&openib_btl->ib_lock);
-            frag = opal_list_remove_first(
+            frag = opal_fifo_pop(
                     &openib_btl->qps[qp].u.srq_qp.pending_frags[i]);
             OPAL_THREAD_UNLOCK(&openib_btl->ib_lock);
 

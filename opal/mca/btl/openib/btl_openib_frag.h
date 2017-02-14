@@ -402,7 +402,7 @@ static inline mca_btl_openib_coalesced_frag_t *alloc_coalesced_frag(void)
 #define MCA_BTL_OPENIB_CLEAN_PENDING_FRAGS(list)                        \
     do {                                                                \
         opal_list_item_t *_frag_item;                                   \
-        while (NULL != (_frag_item = opal_list_remove_first(list))) {   \
+        while (NULL != (_frag_item = opal_fifo_pop(list))) {   \
             MCA_BTL_IB_FRAG_RETURN(_frag_item);                         \
         }                                                               \
     } while (0)

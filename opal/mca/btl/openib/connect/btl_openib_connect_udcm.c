@@ -2412,8 +2412,8 @@ static int udcm_xrc_restart_connect (mca_btl_base_endpoint_t *lcl_ep)
         lcl_ep->ib_addr->status = MCA_BTL_IB_ADDR_CLOSED;
         /* destroy the qp */
         /* the reciver site was alredy closed so all pending list must be clean ! */
-        assert (opal_list_is_empty(&lcl_ep->qps->no_wqe_pending_frags[0]));
-        assert (opal_list_is_empty(&lcl_ep->qps->no_wqe_pending_frags[1]));
+        assert (opal_fifo_is_empty(&lcl_ep->qps->no_wqe_pending_frags[0]));
+        assert (opal_fifo_is_empty(&lcl_ep->qps->no_wqe_pending_frags[1]));
 
         if (ibv_destroy_qp (lcl_ep->qps[0].qp->lcl_qp))
             BTL_ERROR(("Failed to destroy QP. errno %d", errno));

@@ -111,9 +111,7 @@ int mca_btl_openib_get (mca_btl_base_module_t *btl, struct mca_btl_base_endpoint
         if (OPAL_LIKELY(OPAL_ERR_OUT_OF_RESOURCE == rc)) {
             rc = OPAL_SUCCESS;
 
-            OPAL_THREAD_LOCK(&ep->endpoint_lock);
-            opal_list_append(&ep->pending_get_frags, (opal_list_item_t*)frag);
-            OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+            opal_fifo_push(&ep->pending_get_frags, (opal_list_item_t*)frag);
         } else {
             MCA_BTL_IB_FRAG_RETURN (frag);
         }

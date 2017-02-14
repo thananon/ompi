@@ -62,7 +62,7 @@ static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
 
     if(qp_get_wqe(ep, qp) < 0) {
         qp_put_wqe(ep, qp);
-        opal_list_append(&ep->qps[qp].no_wqe_pending_frags[prio],
+        opal_fifo_push(&ep->qps[qp].no_wqe_pending_frags[prio],
                 (opal_list_item_t *)frag);
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
@@ -228,11 +228,11 @@ static void endpoint_init_qp(mca_btl_base_endpoint_t *ep, const int qp)
     ep_qp->rd_credit_send_lock = 0;
     ep_qp->credit_frag = NULL;
 
-    OBJ_CONSTRUCT(&ep_qp->no_wqe_pending_frags[0], opal_list_t);
-    OBJ_CONSTRUCT(&ep_qp->no_wqe_pending_frags[1], opal_list_t);
+    OBJ_CONSTRUCT(&ep_qp->no_wqe_pending_frags[0], opal_fifo_t);
+    OBJ_CONSTRUCT(&ep_qp->no_wqe_pending_frags[1], opal_fifo_t);
 
-    OBJ_CONSTRUCT(&ep_qp->no_credits_pending_frags[0], opal_list_t);
-    OBJ_CONSTRUCT(&ep_qp->no_credits_pending_frags[1], opal_list_t);
+    OBJ_CONSTRUCT(&ep_qp->no_credits_pending_frags[0], opal_fifo_t);
+    OBJ_CONSTRUCT(&ep_qp->no_credits_pending_frags[1], opal_fifo_t);
 
     switch(BTL_OPENIB_QP_TYPE(qp)) {
         case MCA_BTL_OPENIB_PP_QP:
@@ -324,9 +324,9 @@ static void mca_btl_openib_endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     endpoint->endpoint_state = MCA_BTL_IB_CLOSED;
     endpoint->endpoint_retries = 0;
     OBJ_CONSTRUCT(&endpoint->endpoint_lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&endpoint->pending_lazy_frags, opal_list_t);
-    OBJ_CONSTRUCT(&endpoint->pending_get_frags, opal_list_t);
-    OBJ_CONSTRUCT(&endpoint->pending_put_frags, opal_list_t);
+    OBJ_CONSTRUCT(&endpoint->pending_lazy_frags, opal_fifo_t);
+    OBJ_CONSTRUCT(&endpoint->pending_get_frags, opal_fifo_t);
+    OBJ_CONSTRUCT(&endpoint->pending_put_frags, opal_fifo_t);
 
     endpoint->get_tokens = mca_btl_openib_component.ib_qp_ous_rd_atom;
 
@@ -659,7 +659,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
     /* Process pending packet on the endpoint */
 
     /* While there are frags in the list, process them */
-    while (NULL != (frag_item = opal_list_remove_first(&(endpoint->pending_lazy_frags)))) {
+    while (NULL != (frag_item = opal_fifo_pop(&(endpoint->pending_lazy_frags)))) {
         frag = to_send_frag(frag_item);
         /* We need to post this one */
 

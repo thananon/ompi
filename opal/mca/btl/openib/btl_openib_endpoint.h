@@ -32,7 +32,7 @@
 
 #include <errno.h>
 #include <string.h>
-#include "opal/class/opal_list.h"
+#include "opal/class/opal_fifo.h"
 #include "opal/mca/event/event.h"
 #include "opal/util/output.h"
 #include "opal/mca/btl/btl.h"
@@ -150,9 +150,9 @@ typedef struct mca_btl_openib_qp_t {
 
 typedef struct mca_btl_openib_endpoint_qp_t {
     mca_btl_openib_qp_t *qp;
-    opal_list_t no_credits_pending_frags[2]; /**< put fragment here if there is no credits
+    opal_fifo_t no_credits_pending_frags[2]; /**< put fragment here if there is no credits
                                      available */
-    opal_list_t no_wqe_pending_frags[2]; /**< put fragments here if there is no wqe
+    opal_fifo_t no_wqe_pending_frags[2]; /**< put fragments here if there is no wqe
                                     available  */
     int32_t  rd_credit_send_lock;  /**< Lock credit send fragment */
     mca_btl_openib_send_control_frag_t *credit_frag;
@@ -210,7 +210,7 @@ struct mca_btl_base_endpoint_t {
 
     /** list of pending frags due to lazy connection establishment
         for this endpotint */
-    opal_list_t                 pending_lazy_frags;
+    opal_fifo_t                 pending_lazy_frags;
 
     mca_btl_openib_endpoint_qp_t *qps;
 #if OPAL_HAVE_CONNECTX_XRC_DOMAINS
@@ -221,9 +221,9 @@ struct mca_btl_base_endpoint_t {
     uint32_t xrc_recv_psn;
 
     /** list of pending rget ops */
-    opal_list_t                 pending_get_frags;
+    opal_fifo_t                 pending_get_frags;
     /** list of pending rput ops */
-    opal_list_t                 pending_put_frags;
+    opal_fifo_t                 pending_put_frags;
 
     /** number of available get tokens */
     int32_t                     get_tokens;
@@ -491,7 +491,7 @@ try_send:
 }
 
 static inline int check_endpoint_state(mca_btl_openib_endpoint_t *ep,
-        mca_btl_base_descriptor_t *des, opal_list_t *pending_list)
+        mca_btl_base_descriptor_t *des, opal_fifo_t *pending_list)
 {
     int rc = OPAL_ERR_RESOURCE_BUSY;
 
@@ -503,7 +503,7 @@ static inline int check_endpoint_state(mca_btl_openib_endpoint_t *ep,
             }
             /* fall through */
         default:
-            opal_list_append(pending_list, (opal_list_item_t *)des);
+            opal_fifo_push(pending_list, (opal_list_item_t *)des);
             break;
         case MCA_BTL_IB_FAILED:
             rc = OPAL_ERR_UNREACH;
@@ -639,7 +639,7 @@ static inline int mca_btl_openib_endpoint_credit_acquire (struct mca_btl_base_en
             if (OPAL_THREAD_ADD32(&endpoint->qps[qp].u.pp_qp.sd_credits, -1) < 0) {
                 OPAL_THREAD_ADD32(&endpoint->qps[qp].u.pp_qp.sd_credits, 1);
                 if (queue_frag) {
-                    opal_list_append(&endpoint->qps[qp].no_credits_pending_frags[prio],
+                    opal_fifo_push(&endpoint->qps[qp].no_credits_pending_frags[prio],
                                      (opal_list_item_t *)frag);
                 }
 
@@ -649,10 +649,8 @@ static inline int mca_btl_openib_endpoint_credit_acquire (struct mca_btl_base_en
             if(OPAL_THREAD_ADD32(&openib_btl->qps[qp].u.srq_qp.sd_credits, -1) < 0) {
                 OPAL_THREAD_ADD32(&openib_btl->qps[qp].u.srq_qp.sd_credits, 1);
                 if (queue_frag) {
-                    OPAL_THREAD_LOCK(&openib_btl->ib_lock);
-                    opal_list_append(&openib_btl->qps[qp].u.srq_qp.pending_frags[prio],
+                    opal_fifo_push(&openib_btl->qps[qp].u.srq_qp.pending_frags[prio],
                                      (opal_list_item_t *)frag);
-                    OPAL_THREAD_UNLOCK(&openib_btl->ib_lock);
                 }
 
                 return OPAL_ERR_OUT_OF_RESOURCE;

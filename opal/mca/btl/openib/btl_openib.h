@@ -40,6 +40,7 @@
 /* Open MPI includes */
 #include "opal/class/opal_pointer_array.h"
 #include "opal/class/opal_hash_table.h"
+#include "opal/class/opal_fifo.h"
 #include "opal/util/arch.h"
 #include "opal/util/output.h"
 #include "opal/mca/event/event.h"
@@ -430,7 +431,7 @@ struct mca_btl_openib_module_srq_qp_t {
     int32_t rd_posted;
     int32_t sd_credits;  /* the max number of outstanding sends on a QP when using SRQ */
                          /*  i.e. the number of frags that  can be outstanding (down counter) */
-    opal_list_t pending_frags[2];    /**< list of high/low prio frags */
+    opal_fifo_t pending_frags[2];    /**< list of high/low prio frags */
     /** The number of receive buffers that can be post in the current time.
         The value may be increased in the IBV_EVENT_SRQ_LIMIT_REACHED
         event handler. The value starts from (rd_num / 4) and increased up to rd_num */

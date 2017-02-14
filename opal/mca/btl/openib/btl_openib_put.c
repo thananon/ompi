@@ -121,9 +121,7 @@ int mca_btl_openib_put (mca_btl_base_module_t *btl, struct mca_btl_base_endpoint
             rc = OPAL_SUCCESS;
 
             /* queue the fragment for when resources are available */
-            OPAL_THREAD_LOCK(&ep->endpoint_lock);
-            opal_list_append(&ep->pending_put_frags, (opal_list_item_t*)frag);
-            OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+            opal_fifo_push(&ep->pending_put_frags, (opal_list_item_t*)frag);
         } else {
             MCA_BTL_IB_FRAG_RETURN (frag);
         }

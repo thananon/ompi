@@ -93,9 +93,7 @@ static int mca_btl_openib_atomic_internal (struct mca_btl_base_module_t *btl, st
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         if (OPAL_LIKELY(OPAL_ERR_OUT_OF_RESOURCE == rc)) {
             rc = OPAL_SUCCESS;
-
-            OPAL_THREAD_SCOPED_LOCK(&endpoint->endpoint_lock,
-				    opal_list_append(&endpoint->pending_get_frags, (opal_list_item_t*)frag));
+		    opal_fifo_push(&endpoint->pending_get_frags, (opal_list_item_t*)frag);
         } else {
             MCA_BTL_IB_FRAG_RETURN (frag);
         }
