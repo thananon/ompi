@@ -3330,7 +3330,6 @@ progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
     opal_list_item_t *frag;
     mca_btl_openib_qp_t *qp = ep->qps[qpn].qp;
 
-    OPAL_THREAD_LOCK(&ep->endpoint_lock);
     for(int i = 0; i < 2; i++) {
        while(qp->sd_wqe > 0) {
             mca_btl_base_endpoint_t *tmp_ep;
@@ -3350,7 +3349,6 @@ progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
             }
        }
     }
-    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
 }
 
 static void progress_pending_frags_srq(mca_btl_openib_module_t* openib_btl,
