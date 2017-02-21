@@ -1783,7 +1783,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     int send_signaled;
     int rc;
 
-    OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
     if (OPAL_UNLIKELY(MCA_BTL_IB_CONNECTED != ep->endpoint_state)) {
         goto cant_send;
@@ -1854,7 +1853,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         if (0 == send_signaled) {
             MCA_BTL_IB_FRAG_RETURN(frag);
         }
-        OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
 
         return OPAL_SUCCESS;
     }
@@ -1871,7 +1869,6 @@ cant_send_frag:
 cant_send_wqe:
     qp_put_wqe (ep, qp);
 cant_send:
-    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
     /* We can not send the data directly, so we just return descriptor */
     if (NULL != descriptor) {
         *descriptor = mca_btl_openib_alloc(btl, ep, order, size, flags);
