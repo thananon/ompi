@@ -76,9 +76,7 @@ static int mca_btl_openib_atomic_internal (struct mca_btl_base_module_t *btl, st
     /* NTH: the SRQ# is set in mca_btl_get_internal */
 
     if (endpoint->endpoint_state != MCA_BTL_IB_CONNECTED) {
-        OPAL_THREAD_LOCK(&endpoint->endpoint_lock);
         rc = check_endpoint_state(endpoint, &to_base_frag(frag)->base, &endpoint->pending_get_frags);
-        OPAL_THREAD_UNLOCK(&endpoint->endpoint_lock);
         if (OPAL_ERR_RESOURCE_BUSY == rc) {
             return OPAL_SUCCESS;
         }

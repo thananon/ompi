@@ -101,9 +101,7 @@ int mca_btl_openib_put (mca_btl_base_module_t *btl, struct mca_btl_base_endpoint
     }
 
     if (ep->endpoint_state != MCA_BTL_IB_CONNECTED) {
-        OPAL_THREAD_LOCK(&ep->endpoint_lock);
         rc = check_endpoint_state(ep, &to_base_frag(frag)->base, &ep->pending_put_frags);
-        OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
         if (OPAL_ERR_RESOURCE_BUSY == rc) {
             /* descriptor was queued pending connection */
             return OPAL_SUCCESS;

@@ -497,10 +497,12 @@ static inline int check_endpoint_state(mca_btl_openib_endpoint_t *ep,
 
     switch(ep->endpoint_state) {
         case MCA_BTL_IB_CLOSED:
+            OPAL_THREAD_LOCK(&ep->endpoint_lock);
             rc = ep->endpoint_local_cpc->cbm_start_connect(ep->endpoint_local_cpc, ep);
             if (OPAL_SUCCESS == rc) {
                 rc = OPAL_ERR_RESOURCE_BUSY;
             }
+            OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
             /* fall through */
         default:
             opal_fifo_push(pending_list, (opal_list_item_t *)des);

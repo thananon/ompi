@@ -684,14 +684,12 @@ int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t* ep,
 {
     int rc;
 
-    OPAL_THREAD_LOCK(&ep->endpoint_lock);
     rc = check_endpoint_state(ep, &to_base_frag(frag)->base,
             &ep->pending_lazy_frags);
 
     if(OPAL_LIKELY(OPAL_SUCCESS == rc)) {
         rc = mca_btl_openib_endpoint_post_send(ep, frag);
     }
-    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
     if (OPAL_UNLIKELY(OPAL_ERR_RESOURCE_BUSY == rc)) {
         rc = OPAL_SUCCESS;
     }

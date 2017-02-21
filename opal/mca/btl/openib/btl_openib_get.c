@@ -93,9 +93,7 @@ int mca_btl_openib_get (mca_btl_base_module_t *btl, struct mca_btl_base_endpoint
     }
 
     if (ep->endpoint_state != MCA_BTL_IB_CONNECTED) {
-        OPAL_THREAD_LOCK(&ep->endpoint_lock);
         rc = check_endpoint_state(ep, &to_base_frag(frag)->base, &ep->pending_get_frags);
-        OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
         if (OPAL_ERR_RESOURCE_BUSY == rc) {
             return OPAL_SUCCESS;
         }
