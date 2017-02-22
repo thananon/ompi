@@ -2977,7 +2977,7 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
                      (ep->eager_rdma_remote.tokens > 0 ||
                       ep->qps[qp].u.pp_qp.sd_credits > 0 ||
                       !BTL_OPENIB_QP_TYPE_PP(qp))) {
-                frag = opal_fifo_pop_atomic(&ep->qps[qp].no_credits_pending_frags[pri]);
+                frag = opal_fifo_pop(&ep->qps[qp].no_credits_pending_frags[pri]);
                 assert (NULL != frag);
 
                 /* If _endpoint_post_send() fails because of
@@ -3003,7 +3003,6 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
         }
     }
 
-    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
     return OPAL_SUCCESS;
 }
 
@@ -3359,10 +3358,8 @@ static void progress_pending_frags_srq(mca_btl_openib_module_t* openib_btl,
 
     for(i = 0; i < 2; i++) {
         while(openib_btl->qps[qp].u.srq_qp.sd_credits > 0) {
-            OPAL_THREAD_LOCK(&openib_btl->ib_lock);
             frag = opal_fifo_pop(
                     &openib_btl->qps[qp].u.srq_qp.pending_frags[i]);
-            OPAL_THREAD_UNLOCK(&openib_btl->ib_lock);
 
             if(NULL == frag)
                 break;
@@ -3679,7 +3676,7 @@ static int progress_one_device(mca_btl_openib_device_t *device)
         if(!endpoint)
             continue;
 
-        OPAL_THREAD_LOCK(&endpoint->eager_rdma_local.lock);
+        /** OPAL_THREAD_LOCK(&endpoint->eager_rdma_local.lock); */
         frag = MCA_BTL_OPENIB_GET_LOCAL_RDMA_FRAG(endpoint,
                 endpoint->eager_rdma_local.head);
 
@@ -3702,7 +3699,7 @@ static int progress_one_device(mca_btl_openib_device_t *device)
 #endif
             MCA_BTL_OPENIB_RDMA_NEXT_INDEX(endpoint->eager_rdma_local.head);
 
-            OPAL_THREAD_UNLOCK(&endpoint->eager_rdma_local.lock);
+            /** OPAL_THREAD_UNLOCK(&endpoint->eager_rdma_local.lock); */
             frag->hdr = (mca_btl_openib_header_t*)(((char*)frag->ftr) -
                 size - BTL_OPENIB_FTR_PADDING(size) + sizeof(mca_btl_openib_footer_t));
             to_base_frag(frag)->segment.seg_addr.pval =
@@ -3716,8 +3713,8 @@ static int progress_one_device(mca_btl_openib_device_t *device)
             }
 
             count++;
-        } else
-            OPAL_THREAD_UNLOCK(&endpoint->eager_rdma_local.lock);
+        } else{}
+            /** OPAL_THREAD_UNLOCK(&endpoint->eager_rdma_local.lock); */
     }
 
     device->eager_rdma_polls--;
