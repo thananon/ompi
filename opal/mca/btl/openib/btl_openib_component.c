@@ -2938,7 +2938,6 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
     int qp, pri, rc;
     opal_list_item_t *frag;
 
-    OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
     /* Traverse all QPs and all priorities */
     for (qp = 0; qp < mca_btl_openib_component.num_qps; ++qp) {
@@ -2998,7 +2997,6 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
                 rc = mca_btl_openib_endpoint_post_send(ep, to_send_frag(frag));
                 if (OPAL_UNLIKELY(OPAL_SUCCESS != rc &&
                                   OPAL_ERR_RESOURCE_BUSY != rc)) {
-                    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
                     return rc;
                 }
             }
