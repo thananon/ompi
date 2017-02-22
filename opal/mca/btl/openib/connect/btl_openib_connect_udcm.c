@@ -854,7 +854,7 @@ static int udcm_module_finalize(mca_btl_openib_module_t *btl,
     opal_mutex_lock (&m->cm_lock);
 
     /* clear message queue */
-    while (NULL != (item = opal_fifo_pop_atomic (&m->cm_recv_msg_fifo))) {
+    while (NULL != (item = opal_fifo_pop (&m->cm_recv_msg_fifo))) {
         OBJ_RELEASE(item);
     }
 
@@ -2106,7 +2106,7 @@ static int udcm_process_messages (struct ibv_cq *event_cq, udcm_module_t *m)
         /* Copy just the message header */
         memcpy (&item->msg_hdr, &message->hdr, sizeof (message->hdr));
 
-        opal_fifo_push_atomic (&m->cm_recv_msg_fifo, &item->super);
+        opal_fifo_push (&m->cm_recv_msg_fifo, &item->super);
 
         udcm_send_ack (lcl_ep, message->hdr.rem_ctx);
 
@@ -2177,7 +2177,7 @@ static void *udcm_message_callback (int fd, int flags, void *context)
     opal_atomic_swap_32 (&m->cm_message_event_active, 0);
     opal_atomic_wmb ();
 
-    while ((item = (udcm_message_recv_t *) opal_fifo_pop_atomic (&m->cm_recv_msg_fifo))) {
+    while ((item = (udcm_message_recv_t *) opal_fifo_pop (&m->cm_recv_msg_fifo))) {
         mca_btl_openib_endpoint_t *lcl_ep = item->msg_hdr.lcl_ep;
 
         OPAL_THREAD_LOCK(&lcl_ep->endpoint_lock);
