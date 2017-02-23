@@ -3444,7 +3444,7 @@ static void handle_wc(mca_btl_openib_device_t* device, const uint32_t cq,
             OPAL_OUTPUT((-1, "Got WC: RDMA_WRITE or SEND"));
             if(openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_SEND) {
                 opal_list_item_t *i;
-                while((i = opal_list_remove_first(&to_send_frag(des)->coalesced_frags))) {
+                while((i = opal_fifo_pop (&to_send_frag(des)->coalesced_frags))) {
                     btl_ownership = (to_base_frag(i)->base.des_flags & MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
                         to_base_frag(i)->base.des_cbfunc(&openib_btl->super, endpoint,
                                 &to_base_frag(i)->base, OPAL_SUCCESS);

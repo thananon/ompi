@@ -103,7 +103,7 @@ static void send_constructor(mca_btl_openib_send_frag_t *frag)
     base_frag->segment.seg_addr.pval = frag->hdr + 1;
     to_com_frag(frag)->sg_entry.addr = (uint64_t)(uintptr_t)frag->hdr;
     frag->coalesced_length = 0;
-    OBJ_CONSTRUCT(&frag->coalesced_frags, opal_list_t);
+    OBJ_CONSTRUCT(&frag->coalesced_frags, opal_fifo_t);
 }
 
 static void recv_constructor(mca_btl_openib_recv_frag_t *frag)

@@ -1530,7 +1530,7 @@ int mca_btl_openib_free(
             to_send_frag(des)->coalesced_length = 0;
             to_base_frag(des)->segment.seg_addr.pval =
                 to_send_frag(des)->hdr + 1;
-            assert(!opal_list_get_size(&to_send_frag(des)->coalesced_frags));
+            assert(NULL = opal_fifo_pop (&to_send_frag(des)->coalesced_frags));
             /* fall through */
         default:
             break;
@@ -1897,7 +1897,7 @@ int mca_btl_openib_send(
 
         /* save coalesced fragment on a main fragment; we will need it after send
          * completion to free it and to call upper layer callback */
-        opal_list_append(&frag->coalesced_frags, (opal_list_item_t*) des);
+        opal_fifo_push (&frag->coalesced_frags, (opal_list_item_t*) des);
         frag->coalesced_length += to_coalesced_frag(des)->hdr->alloc_size +
                                    sizeof(mca_btl_openib_header_coalesced_t);
 

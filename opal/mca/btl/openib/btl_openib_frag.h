@@ -297,7 +297,7 @@ typedef struct mca_btl_openib_send_frag_t {
     mca_btl_openib_footer_t *ftr;
     uint8_t qp_idx;
     uint32_t coalesced_length;
-    opal_list_t coalesced_frags;
+    opal_fifo_t coalesced_frags;
 } mca_btl_openib_send_frag_t;
 OBJ_CLASS_DECLARATION(mca_btl_openib_send_frag_t);
 
