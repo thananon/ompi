@@ -94,6 +94,7 @@ static mca_btl_base_registration_handle_t *mca_btl_openib_register_mem (mca_btl_
                                                                         mca_btl_base_endpoint_t *endpoint,
                                                                         void *base, size_t size, uint32_t flags);
 static int mca_btl_openib_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle);
+void progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn);
 
 mca_btl_openib_module_t mca_btl_openib_module = {
     .super = {
@@ -1806,6 +1807,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
 
     /* Allocate WQE */
     if(OPAL_UNLIKELY(qp_get_wqe(ep, qp) < 0)) {
+        progress_pending_frags_wqe(ep, qp);
         goto cant_send_wqe;
     }
 
@@ -1823,6 +1825,9 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     rc = mca_btl_openib_endpoint_credit_acquire (ep, qp, prio, size, &do_rdma,
                                                  to_send_frag(frag), false);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+        /* We don't have credit so we have to try to progress something. */
+        progress_no_credits_pending_frags(ep);
+
         goto cant_send_frag;
     }
 
