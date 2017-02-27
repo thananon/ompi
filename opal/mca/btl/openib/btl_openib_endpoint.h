@@ -206,7 +206,7 @@ struct mca_btl_base_endpoint_t {
     double                      endpoint_tstamp;
 
     /** lock for concurrent access to endpoint state */
-    opal_mutex_t                endpoint_lock;
+    opal_recursive_mutex_t                endpoint_lock;
 
     /** list of pending frags due to lazy connection establishment
         for this endpotint */

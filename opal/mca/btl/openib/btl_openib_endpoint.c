@@ -323,7 +323,7 @@ static void mca_btl_openib_endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     endpoint->endpoint_tstamp = 0.0;
     endpoint->endpoint_state = MCA_BTL_IB_CLOSED;
     endpoint->endpoint_retries = 0;
-    OBJ_CONSTRUCT(&endpoint->endpoint_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&endpoint->endpoint_lock, opal_recursive_mutex_t);
     OBJ_CONSTRUCT(&endpoint->pending_lazy_frags, opal_list_t);
     OBJ_CONSTRUCT(&endpoint->pending_get_frags, opal_list_t);
     OBJ_CONSTRUCT(&endpoint->pending_put_frags, opal_list_t);
