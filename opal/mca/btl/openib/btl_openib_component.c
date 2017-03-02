@@ -2933,7 +2933,7 @@ btl_openib_component_init(int *num_btl_modules,
 /*
  * Progress the no_credits_pending_frags lists on all qp's
  */
-int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
+static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
 {
     int qp, pri, rc, len;
     opal_list_item_t *frag;
@@ -3334,7 +3334,7 @@ static char* btl_openib_component_status_to_string(enum ibv_wc_status status)
     }
 }
 
-void
+static void
 progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
 {
     int ret;

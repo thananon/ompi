@@ -354,7 +354,6 @@ void mca_btl_openib_endpoint_init(mca_btl_openib_module_t*,
                                   struct mca_btl_openib_proc_modex_t *remote_proc_info,
                                   opal_btl_openib_connect_base_module_data_t *remote_cpc_data);
 
-int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep);
 /*
  * Invoke an error on the btl associated with an endpoint.  If we
  * don't have an endpoint, then just use the first one on the
