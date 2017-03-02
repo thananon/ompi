@@ -1786,6 +1786,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     int send_signaled;
     int rc;
 
+    OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
     if (OPAL_UNLIKELY(MCA_BTL_IB_CONNECTED != ep->endpoint_state)) {
         goto cant_send;
@@ -1817,7 +1818,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     frag = to_base_frag(item);
     hdr = to_send_frag(item)->hdr;
 
-    OPAL_THREAD_LOCK(&ep->endpoint_lock);
     /* eager rdma or send ? Check eager rdma credits */
     /* Note: Maybe we want to implement isend only for eager rdma ?*/
     rc = mca_btl_openib_endpoint_credit_acquire (ep, qp, prio, size, &do_rdma,
