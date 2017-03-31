@@ -338,7 +338,7 @@ static inline void qp_reset_signal_count(mca_btl_openib_endpoint_t *ep, const in
 int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t*,
         mca_btl_openib_send_frag_t*);
 int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t*,
-        mca_btl_openib_send_frag_t*);
+        mca_btl_openib_send_frag_t*, bool);
 void mca_btl_openib_endpoint_send_credits(mca_btl_base_endpoint_t*, const int);
 void mca_btl_openib_endpoint_connect_eager_rdma(mca_btl_openib_endpoint_t*);
 int mca_btl_openib_endpoint_post_recvs(mca_btl_openib_endpoint_t*);

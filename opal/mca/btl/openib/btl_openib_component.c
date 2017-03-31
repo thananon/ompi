@@ -2996,9 +2996,10 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
 
                    If it fails because of another error, return the
                    error upward. */
-                rc = mca_btl_openib_endpoint_post_send(ep, to_send_frag(frag));
-                if (OPAL_UNLIKELY(OPAL_SUCCESS != rc &&
-                                  OPAL_ERR_RESOURCE_BUSY != rc)) {
+                rc = mca_btl_openib_endpoint_post_send(ep, to_send_frag(frag), false);
+                if (OPAL_UNLIKELY(OPAL_SUCCESS != rc )) {
+                    /* put the fragment back at the head of the list. */
+                    opal_list_prepend(&ep->qps[qp].no_credits_pending_frags[pri], (opal_list_item_t*) frag);
                     OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
                     return rc;
                 }
@@ -3350,13 +3351,11 @@ progress_pending_frags_wqe(mca_btl_base_endpoint_t *ep, const int qpn)
                 break;
             assert(0 == frag->opal_list_item_refcount);
             tmp_ep = to_com_frag(frag)->endpoint;
-            ret = mca_btl_openib_endpoint_post_send(tmp_ep, to_send_frag(frag));
+            ret = mca_btl_openib_endpoint_post_send(tmp_ep, to_send_frag(frag), false);
             if (OPAL_SUCCESS != ret) {
                 /* NTH: this handles retrying if we are out of credits but other errors are not
                  * handled (maybe abort?). */
-                if (OPAL_ERR_RESOURCE_BUSY != ret) {
-                    opal_list_prepend (&ep->qps[qpn].no_wqe_pending_frags[i], (opal_list_item_t *) frag);
-                }
+                opal_list_prepend (&ep->qps[qpn].no_wqe_pending_frags[i], (opal_list_item_t *) frag);
                 break;
             }
        }

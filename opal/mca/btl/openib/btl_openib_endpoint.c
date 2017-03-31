@@ -72,7 +72,7 @@ static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
 
 /* this function is called with endpoint->endpoint_lock held */
 int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
-        mca_btl_openib_send_frag_t *frag)
+        mca_btl_openib_send_frag_t *frag, bool queue_frag)
 {
     int prio = to_base_frag(frag)->base.des_flags & MCA_BTL_DES_FLAGS_PRIORITY;
     mca_btl_openib_header_t *hdr = frag->hdr;
@@ -92,7 +92,7 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
     size = des->des_segments->seg_len + frag->coalesced_length;
 
     rc = mca_btl_openib_endpoint_credit_acquire (endpoint, qp, prio, size,
-                                                 &do_rdma, frag, true);
+                                                 &do_rdma, frag, queue_frag);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         qp_put_wqe(endpoint, qp);
         return OPAL_ERR_RESOURCE_BUSY;
@@ -537,7 +537,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     ctl_hdr->type = MCA_BTL_OPENIB_CONTROL_CTS;
 
     /* Send the fragment */
-    if (OPAL_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, sc_frag)) {
+    if (OPAL_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, sc_frag, true)) {
         BTL_ERROR(("Failed to post CTS send"));
         mca_btl_openib_endpoint_invoke_error(endpoint);
     }
@@ -663,7 +663,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         frag = to_send_frag(frag_item);
         /* We need to post this one */
 
-        if (OPAL_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag)) {
+        if (OPAL_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag, true)) {
             BTL_ERROR(("Error posting send"));
         }
     }
@@ -689,7 +689,7 @@ int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t* ep,
             &ep->pending_lazy_frags);
 
     if(OPAL_LIKELY(OPAL_SUCCESS == rc)) {
-        rc = mca_btl_openib_endpoint_post_send(ep, frag);
+        rc = mca_btl_openib_endpoint_post_send(ep, frag, true);
     }
     OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
     if (OPAL_UNLIKELY(OPAL_ERR_RESOURCE_BUSY == rc)) {
