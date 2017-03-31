@@ -1796,6 +1796,9 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
         goto cant_send;
     }
+    if(opal_list_is_empty(&ep->qps[qp].no_credits_pending_frags[prio])){
+        goto cant_send;
+    }
 
 #if OPAL_CUDA_GDR_SUPPORT
     /* We do not want to use this path when we have GDR support */
@@ -1825,7 +1828,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         goto cant_send_frag;
     }
-
     frag->segment.seg_len = size;
     frag->base.order = qp;
     frag->base.des_flags = flags;
