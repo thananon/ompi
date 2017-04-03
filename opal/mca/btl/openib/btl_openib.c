@@ -1796,7 +1796,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
         goto cant_send;
     }
-    if(opal_list_is_empty(&ep->qps[qp].no_credits_pending_frags[prio])){
+    if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_credits_pending_frags[prio]))){
         goto cant_send;
     }
 
