@@ -1760,8 +1760,8 @@ int mca_btl_openib_finalize(struct mca_btl_base_module_t* btl)
 
 /*
  *  Send immediate - Minimum function calls minimum checks, send the data ASAP.
- *  If BTL can't to send the messages imidiate, it creates messages descriptor
- *  returns it to PML.
+ *  If BTL can't to send the messages imidiately, it creates a message descriptor
+ *  and returns it to PML.
  */
 int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         struct mca_btl_base_endpoint_t* ep,
@@ -1786,6 +1786,13 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     int send_signaled;
     int rc;
 
+#if OPAL_CUDA_GDR_SUPPORT
+    /* We do not want to use this path when we have GDR support */
+    if (convertor->flags & CONVERTOR_CUDA) {
+        goto allocate_descriptor_and_return;
+    }
+#endif /* OPAL_CUDA_GDR_SUPPORT */
+
     OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
     if (OPAL_UNLIKELY(MCA_BTL_IB_CONNECTED != ep->endpoint_state)) {
@@ -1799,13 +1806,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_credits_pending_frags[prio]))){
         goto cant_send;
     }
-
-#if OPAL_CUDA_GDR_SUPPORT
-    /* We do not want to use this path when we have GDR support */
-    if (convertor->flags & CONVERTOR_CUDA) {
-        goto cant_send;
-    }
-#endif /* OPAL_CUDA_GDR_SUPPORT */
 
     /* Allocate WQE */
     if(OPAL_UNLIKELY(qp_get_wqe(ep, qp) < 0)) {
@@ -1878,6 +1878,9 @@ cant_send_wqe:
 cant_send:
     mca_btl_openib_component.super.btl_progress();
     OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+#if OPAL_CUDA_GDR_SUPPORT
+allocate_descriptor_and_return:
+#endif  /* OPAL_CUDA_GDR_SUPPORT */
     /* We can not send the data directly, so we just return descriptor */
     if (NULL != descriptor) {
         *descriptor = mca_btl_openib_alloc(btl, ep, order, size, flags);
