@@ -54,8 +54,8 @@ static inline int mca_pml_ob1_process_pending_cuda_async_copies(void)
 static int mca_pml_ob1_progress_needed = 0;
 int mca_pml_ob1_enable_progress(int32_t count)
 {
-    int32_t old = OPAL_ATOMIC_ADD32(&mca_pml_ob1_progress_needed, count);
-    if( 0 != old )
+    int32_t nv = OPAL_ATOMIC_ADD32(&mca_pml_ob1_progress_needed, count);
+    if( 1 < nv )
         return 0;  /* progress was already on */
 
     opal_progress_register(mca_pml_ob1_progress);
@@ -118,7 +118,7 @@ int mca_pml_ob1_progress(void)
 
     if( 0 != completed_requests ) {
         j = OPAL_ATOMIC_ADD32(&mca_pml_ob1_progress_needed, -completed_requests);
-        if( j == completed_requests ) {
+        if( 0 == j ) {
             opal_progress_unregister(mca_pml_ob1_progress);
         }
     }
