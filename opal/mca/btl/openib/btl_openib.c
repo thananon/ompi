@@ -1544,7 +1544,7 @@ int mca_btl_openib_free(
 
         /* the coalesced fragment would have sent the original fragment but that
          * will not happen so send the fragment now */
-        mca_btl_openib_endpoint_send(to_com_frag(sfrag)->endpoint, sfrag);
+        mca_btl_openib_endpoint_send(to_com_frag(sfrag)->endpoint, sfrag, true);
     }
 
     MCA_BTL_IB_FRAG_RETURN(des);
@@ -1760,8 +1760,8 @@ int mca_btl_openib_finalize(struct mca_btl_base_module_t* btl)
 
 /*
  *  Send immediate - Minimum function calls minimum checks, send the data ASAP.
- *  If BTL can't to send the messages imidiate, it creates messages descriptor
- *  returns it to PML.
+ *  If BTL can't to send the messages imidiately, it creates a message descriptor
+ *  and returns it to PML.
  */
 int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         struct mca_btl_base_endpoint_t* ep,
@@ -1786,23 +1786,26 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     int send_signaled;
     int rc;
 
+#if OPAL_CUDA_GDR_SUPPORT
+    /* We do not want to use this path when we have GDR support */
+    if (convertor->flags & CONVERTOR_CUDA) {
+        goto allocate_descriptor_and_return;
+    }
+#endif /* OPAL_CUDA_GDR_SUPPORT */
+
     OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
     if (OPAL_UNLIKELY(MCA_BTL_IB_CONNECTED != ep->endpoint_state)) {
         goto cant_send;
     }
 
-    /* If it is pending messages on the qp - we can not send */
+    /* If there are pending messages on the qp - we can not send */
     if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
         goto cant_send;
     }
-
-#if OPAL_CUDA_GDR_SUPPORT
-    /* We do not want to use this path when we have GDR support */
-    if (convertor->flags & CONVERTOR_CUDA) {
+    if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_credits_pending_frags[prio]))){
         goto cant_send;
     }
-#endif /* OPAL_CUDA_GDR_SUPPORT */
 
     /* Allocate WQE */
     if(OPAL_UNLIKELY(qp_get_wqe(ep, qp) < 0)) {
@@ -1825,7 +1828,6 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         goto cant_send_frag;
     }
-
     frag->segment.seg_len = size;
     frag->base.order = qp;
     frag->base.des_flags = flags;
@@ -1874,7 +1876,11 @@ cant_send_frag:
 cant_send_wqe:
     qp_put_wqe (ep, qp);
 cant_send:
+    mca_btl_openib_component.super.btl_progress();
     OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
+#if OPAL_CUDA_GDR_SUPPORT
+allocate_descriptor_and_return:
+#endif  /* OPAL_CUDA_GDR_SUPPORT */
     /* We can not send the data directly, so we just return descriptor */
     if (NULL != descriptor) {
         *descriptor = mca_btl_openib_alloc(btl, ep, order, size, flags);
@@ -1893,6 +1899,7 @@ int mca_btl_openib_send(
     mca_btl_base_tag_t tag)
 
 {
+    int rc;
     mca_btl_openib_send_frag_t *frag;
 
     assert(openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_SEND ||
@@ -1920,7 +1927,13 @@ int mca_btl_openib_send(
 
     des->des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
 
-    return mca_btl_openib_endpoint_send(ep, frag);
+    rc =  mca_btl_openib_endpoint_send(ep, frag, false);
+
+    if (OPAL_ERR_RESOURCE_BUSY == rc){
+        mca_btl_openib_component.super.btl_progress();
+    }
+    return rc;
+
 }
 
 static mca_btl_base_registration_handle_t *mca_btl_openib_register_mem (mca_btl_base_module_t *btl,

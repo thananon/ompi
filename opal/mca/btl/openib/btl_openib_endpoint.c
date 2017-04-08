@@ -55,15 +55,18 @@ static void mca_btl_openib_endpoint_construct(mca_btl_base_endpoint_t* endpoint)
 static void mca_btl_openib_endpoint_destruct(mca_btl_base_endpoint_t* endpoint);
 
 static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
-        mca_btl_openib_send_frag_t *frag)
+        mca_btl_openib_send_frag_t *frag,
+        bool queue_frag)
 {
     int qp = to_base_frag(frag)->base.order;
     int prio = !(to_base_frag(frag)->base.des_flags & MCA_BTL_DES_FLAGS_PRIORITY);
 
     if(qp_get_wqe(ep, qp) < 0) {
         qp_put_wqe(ep, qp);
-        opal_list_append(&ep->qps[qp].no_wqe_pending_frags[prio],
-                (opal_list_item_t *)frag);
+        if(queue_frag){
+            opal_list_append(&ep->qps[qp].no_wqe_pending_frags[prio],
+                    (opal_list_item_t *)frag);
+        }
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
@@ -72,7 +75,7 @@ static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
 
 /* this function is called with endpoint->endpoint_lock held */
 int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
-        mca_btl_openib_send_frag_t *frag)
+        mca_btl_openib_send_frag_t *frag, bool queue_frag)
 {
     int prio = to_base_frag(frag)->base.des_flags & MCA_BTL_DES_FLAGS_PRIORITY;
     mca_btl_openib_header_t *hdr = frag->hdr;
@@ -86,13 +89,13 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
 
     qp = des->order;
 
-    if(acquire_wqe(endpoint, frag) != OPAL_SUCCESS)
+    if(acquire_wqe(endpoint, frag, queue_frag) != OPAL_SUCCESS)
         return OPAL_ERR_RESOURCE_BUSY;
 
     size = des->des_segments->seg_len + frag->coalesced_length;
 
     rc = mca_btl_openib_endpoint_credit_acquire (endpoint, qp, prio, size,
-                                                 &do_rdma, frag, true);
+                                                 &do_rdma, frag, queue_frag);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         qp_put_wqe(endpoint, qp);
         return OPAL_ERR_RESOURCE_BUSY;
@@ -323,7 +326,7 @@ static void mca_btl_openib_endpoint_construct(mca_btl_base_endpoint_t* endpoint)
     endpoint->endpoint_tstamp = 0.0;
     endpoint->endpoint_state = MCA_BTL_IB_CLOSED;
     endpoint->endpoint_retries = 0;
-    OBJ_CONSTRUCT(&endpoint->endpoint_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&endpoint->endpoint_lock, opal_recursive_mutex_t);
     OBJ_CONSTRUCT(&endpoint->pending_lazy_frags, opal_list_t);
     OBJ_CONSTRUCT(&endpoint->pending_get_frags, opal_list_t);
     OBJ_CONSTRUCT(&endpoint->pending_put_frags, opal_list_t);
@@ -537,7 +540,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     ctl_hdr->type = MCA_BTL_OPENIB_CONTROL_CTS;
 
     /* Send the fragment */
-    if (OPAL_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, sc_frag)) {
+    if (OPAL_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, sc_frag, true)) {
         BTL_ERROR(("Failed to post CTS send"));
         mca_btl_openib_endpoint_invoke_error(endpoint);
     }
@@ -663,7 +666,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         frag = to_send_frag(frag_item);
         /* We need to post this one */
 
-        if (OPAL_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag)) {
+        if (OPAL_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag, true)) {
             BTL_ERROR(("Error posting send"));
         }
     }
@@ -680,7 +683,8 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
  * connected, queue the fragment and start the connection as required.
  */
 int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t* ep,
-                                 mca_btl_openib_send_frag_t* frag)
+                                 mca_btl_openib_send_frag_t* frag,
+                                 bool queue_frag)
 {
     int rc;
 
@@ -688,14 +692,19 @@ int mca_btl_openib_endpoint_send(mca_btl_base_endpoint_t* ep,
     rc = check_endpoint_state(ep, &to_base_frag(frag)->base,
             &ep->pending_lazy_frags);
 
-    if(OPAL_LIKELY(OPAL_SUCCESS == rc)) {
-        rc = mca_btl_openib_endpoint_post_send(ep, frag);
+    if (OPAL_ERR_RESOURCE_BUSY ==rc){
+        rc = OPAL_SUCCESS;
+        goto unlock_and_return;
     }
-    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
-    if (OPAL_UNLIKELY(OPAL_ERR_RESOURCE_BUSY == rc)) {
+    if(OPAL_LIKELY(OPAL_SUCCESS == rc)) {
+        rc = mca_btl_openib_endpoint_post_send(ep, frag, queue_frag);
+    }
+    if (queue_frag){
         rc = OPAL_SUCCESS;
     }
 
+unlock_and_return :
+    OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
     return rc;
 }
 
@@ -876,7 +885,7 @@ static int mca_btl_openib_endpoint_send_eager_rdma(
                      rdma_hdr->rdma_start.ival
                      ));
     }
-    rc = mca_btl_openib_endpoint_send(endpoint, frag);
+    rc = mca_btl_openib_endpoint_send(endpoint, frag, true);
     if (OPAL_SUCCESS == rc || OPAL_ERR_RESOURCE_BUSY == rc)
         return OPAL_SUCCESS;
 
