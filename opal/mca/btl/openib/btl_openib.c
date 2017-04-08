@@ -1544,7 +1544,7 @@ int mca_btl_openib_free(
 
         /* the coalesced fragment would have sent the original fragment but that
          * will not happen so send the fragment now */
-        mca_btl_openib_endpoint_send(to_com_frag(sfrag)->endpoint, sfrag);
+        mca_btl_openib_endpoint_send(to_com_frag(sfrag)->endpoint, sfrag, true);
     }
 
     MCA_BTL_IB_FRAG_RETURN(des);
@@ -1799,7 +1799,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         goto cant_send;
     }
 
-    /* If it is pending messages on the qp - we can not send */
+    /* If there are pending messages on the qp - we can not send */
     if(OPAL_UNLIKELY(!opal_list_is_empty(&ep->qps[qp].no_wqe_pending_frags[prio]))) {
         goto cant_send;
     }
@@ -1899,6 +1899,7 @@ int mca_btl_openib_send(
     mca_btl_base_tag_t tag)
 
 {
+    int rc;
     mca_btl_openib_send_frag_t *frag;
 
     assert(openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_SEND ||
@@ -1926,7 +1927,13 @@ int mca_btl_openib_send(
 
     des->des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
 
-    return mca_btl_openib_endpoint_send(ep, frag);
+    rc =  mca_btl_openib_endpoint_send(ep, frag, false);
+
+    if (OPAL_ERR_RESOURCE_BUSY == rc){
+        mca_btl_openib_component.super.btl_progress();
+    }
+    return rc;
+
 }
 
 static mca_btl_base_registration_handle_t *mca_btl_openib_register_mem (mca_btl_base_module_t *btl,

@@ -3382,7 +3382,7 @@ static void progress_pending_frags_srq(mca_btl_openib_module_t* openib_btl,
                 break;
 
             mca_btl_openib_endpoint_send(to_com_frag(frag)->endpoint,
-                    to_send_frag(frag));
+                    to_send_frag(frag), true);
         }
     }
 }
