@@ -833,8 +833,12 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
 
         // The fabric/domain names changed at libfabric API v1.4 (see above).
         char *linux_device_name;
-        if (libfabric_api <= FI_VERSION(1, 3)) {
-            linux_device_name = info->fabric_attr->name;
+	    if (mca_btl_usnic_component.libfabric_use_usnic){
+            if (libfabric_api <= FI_VERSION(1, 3)) {
+                linux_device_name = info->fabric_attr->name;
+            } else {
+                linux_device_name = info->domain_attr->name;
+            }
         } else {
             linux_device_name = info->domain_attr->name;
         }
@@ -896,7 +900,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             if (ret != 0) {
                 opal_output_verbose(5, USNIC_OUT,
                             "btl:usnic: device %s fabric_open_ops failed %d (%s)",
-                            info->fabric_attr->name, ret, fi_strerror(-ret));
+                            module->linux_device_name, ret, fi_strerror(-ret));
                 fi_close(&domain->fid);
                 fi_close(&fabric->fid);
                 continue;
@@ -909,14 +913,14 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             if (ret != 0) {
                 opal_output_verbose(5, USNIC_OUT,
                             "btl:usnic: device %s usnic_getinfo failed %d (%s)",
-                            info->fabric_attr->name, ret, fi_strerror(-ret));
+                            linux_device_name, ret, fi_strerror(-ret));
                 fi_close(&domain->fid);
                 fi_close(&fabric->fid);
                 continue;
             }
             opal_output_verbose(5, USNIC_OUT,
                                 "btl:usnic: device %s usnic_info: link speed=%d, netmask=0x%x, ifname=%s, num_vf=%d, qp/vf=%d, cq/vf=%d",
-                                info->fabric_attr->name,
+                                module->linux_device_name,
                                 (unsigned int) module->usnic_info.ui.v1.ui_link_speed,
                                 (unsigned int) module->usnic_info.ui.v1.ui_netmask_be,
                                 module->usnic_info.ui.v1.ui_ifname,
@@ -933,7 +937,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
                 check_usnic_config(module, num_local_procs) != OPAL_SUCCESS) {
                 opal_output_verbose(5, USNIC_OUT,
                                      "btl:usnic: device %s is not provisioned with enough resources -- skipping",
-                                     info->fabric_attr->name);
+                                     module->linux_device_name);
                 fi_close(&domain->fid);
                 fi_close(&fabric->fid);
 
