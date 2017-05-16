@@ -2148,14 +2148,12 @@ static int init_channels(opal_btl_usnic_module_t *module)
         goto destroy;
     }
 
-    if(mca_btl_usnic_component.libfabric_use_usnic) {
-
+    if (mca_btl_usnic_component.libfabric_use_usnic) {
         rc = fi_open_ops(&module->av->fid, FI_USNIC_AV_OPS_1, 0,
                 (void **)&module->usnic_av_ops, NULL);
         if (rc != OPAL_SUCCESS) {
             goto destroy;
         }
-
     }
 
     memset(&eq_attr, 0, sizeof(eq_attr));

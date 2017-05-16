@@ -258,8 +258,9 @@ int opal_btl_usnic_connectivity_ping(uint32_t src_ipv4_addr, int src_port,
 
     /* We have to limit the size of the msg to our MTU,
      * even if libfabric returns much bigger number */
-    if(cmd.max_msg_size > NETWORK_MTU) cmd.max_msg_size = MAX_PING_SIZE;
-
+    if (cmd.max_msg_size > NETWORK_MTU) {
+        cmd.max_msg_size = MAX_PING_SIZE;
+    }
     /* Ensure to NULL-terminate the passed string */
     strncpy(cmd.dest_nodename, dest_nodename, CONNECTIVITY_NODENAME_LEN - 1);
 

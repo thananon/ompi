@@ -452,14 +452,42 @@ static usnic_if_filter_t *parse_ifex_str(const char *orig_str,
         /* assume that all interface names begin with an alphanumeric
          * character, not a number */
         if (isalpha(argv[i][0])) {
-            filter->elts[filter->n_elt].is_netmask = false;
-            filter->elts[filter->n_elt].if_name = strdup(argv[i]);
-            opal_output_verbose(20, USNIC_OUT,
-                                "btl:usnic:parse_ifex_str: parsed %s device name: %s",
-                                name, filter->elts[filter->n_elt].if_name);
+            /* Check if the OS know about this name. If yes, convert it to CIDR. */
+            struct sockaddr mapped_addr;
+            uint32_t mapped_mask;
+            int if_index = opal_ifnametoindex(argv[i]);
 
+            /* If we fail, it might be a libfabric name. So keep the name in the filter. */
+            if (-1 == if_index) {
+                filter->elts[filter->n_elt].is_netmask = false;
+                filter->elts[filter->n_elt].if_name = strdup(argv[i]);
+                opal_output_verbose(20, USNIC_OUT,
+                                    "btl:usnic:parse_ifex_str: parsed %s device name: %s",
+                                    name, filter->elts[filter->n_elt].if_name);
+
+                ++filter->n_elt;
+                continue;
+            }
+
+            /* If we get an index, lets get the mask and IP. */
+            ret = opal_ifindextoaddr(if_index, &mapped_addr, sizeof(struct sockaddr));
+            assert(OPAL_SUCCESS == ret);
+
+            ret = opal_ifindextomask(if_index, &mapped_mask, sizeof(uint32_t));
+            assert(OPAL_SUCCESS == ret);
+
+            opal_output_verbose(20, USNIC_OUT,
+                                "converted name %s to address.",
+                                argv[i]);
+
+            filter->elts[filter->n_elt].is_netmask = true;
+            filter->elts[filter->n_elt].if_name = NULL;
+            filter->elts[filter->n_elt].netmask_be = usnic_cidrlen_to_netmask(mapped_mask);
+            filter->elts[filter->n_elt].addr_be = ((struct sockaddr_in*) &mapped_addr)->sin_addr.s_addr &
+                                                usnic_cidrlen_to_netmask(mapped_mask);
             ++filter->n_elt;
             continue;
+
         }
 
         /* Found a subnet notation.  Convert it to an IP
@@ -539,6 +567,8 @@ static bool filter_module(opal_btl_usnic_module_t *module,
 {
     int i;
     uint32_t module_mask;
+    uint32_t loopback_mask;
+    uint32_t loopback_netmask = usnic_cidrlen_to_netmask(8);
     struct sockaddr_in *src;
     struct fi_usnic_info *uip;
     struct fi_info *info;
@@ -551,6 +581,7 @@ static bool filter_module(opal_btl_usnic_module_t *module,
     linux_device_name = module->linux_device_name;
     module_mask = src->sin_addr.s_addr & uip->ui.v1.ui_netmask_be;
     match = false;
+
     for (i = 0; i < filter->n_elt; ++i) {
         if (filter->elts[i].is_netmask) {
             /* conservative: we also require the netmask to match */
@@ -710,11 +741,13 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     struct fi_tx_attr tx_attr = {0};
     struct fi_domain_attr domain_attr = {0};
 
-    /* We only want providers named "usnic" that are of type EP_DGRAM */
+    /* We want providers named "usnic" if not stated otherwise.  with EP type EP_RDM */
     fabric_attr.prov_name = "usnic";
+
     /* Check if the user request usnic provider or not */
-    if( !strcmp(mca_btl_usnic_component.libfabric_provider,"usnic")) 
+    if( !strcmp(mca_btl_usnic_component.libfabric_provider,"usnic")) {
 	    mca_btl_usnic_component.libfabric_use_usnic = true;
+    }
 
     /* Ask usnic for the provider user requested with EP_RDM */
     fabric_attr.prov_name = mca_btl_usnic_component.libfabric_provider;
@@ -750,7 +783,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
         return NULL;
     }
 
-    if(mca_btl_usnic_component.libfabric_use_usnic) {
+    if (mca_btl_usnic_component.libfabric_use_usnic) {
         /* Do quick sanity check to ensure that we can lock memory (which
            is required for registered memory). */
         if (OPAL_SUCCESS != check_reg_mem_basics()) {
@@ -759,6 +792,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             return NULL;
         }
     }
+
     /************************************************************************
      * Below this line, we assume that usnic is loaded on all procs,
      * and therefore we will guarantee to the the modex send, even if
@@ -831,16 +865,11 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
               i < mca_btl_usnic_component.max_modules);
              ++i, info = info->next) {
 
-        // The fabric/domain names changed at libfabric API v1.4 (see above).
+        /* The fabric/domain names (for usnic provider) changed at libfabric API v1.4 (see above). */
         char *linux_device_name;
-	    if (mca_btl_usnic_component.libfabric_use_usnic){
-            if (libfabric_api <= FI_VERSION(1, 3)) {
+        linux_device_name = info->domain_attr->name;
+	    if (mca_btl_usnic_component.libfabric_use_usnic && libfabric_api<= FI_VERSION(1,3)) {
                 linux_device_name = info->fabric_attr->name;
-            } else {
-                linux_device_name = info->domain_attr->name;
-            }
-        } else {
-            linux_device_name = info->domain_attr->name;
         }
 
         ret = fi_fabric(info->fabric_attr, &fabric, NULL);
@@ -891,7 +920,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             goto error;
         }
 
-	if (mca_btl_usnic_component.libfabric_use_usnic){
+	if (mca_btl_usnic_component.libfabric_use_usnic) {
             /* Obtain usnic-specific device info (e.g., netmask) that
                doesn't come in the normal fi_getinfo(). This allows us to
                do filtering, later. */
@@ -946,6 +975,20 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             }
 
 
+        } else {
+        /* We don't have usnic_getinfo, we will try to get the information via OPAL interface instead.
+         * The only information we need here is the device's netmask for later filtering. */
+            int ret;
+            int fabric_index;
+            uint32_t fabric_mask;
+
+            fabric_index = opal_ifnametoindex(module->linux_device_name);
+            if (fabric_index != -1) {  // Success
+                ret = opal_ifindextomask(fabric_index, &fabric_mask, sizeof(uint32_t));
+                assert(OPAL_SUCCESS == ret);
+
+                module->usnic_info.ui.v1.ui_netmask_be = usnic_cidrlen_to_netmask(fabric_mask);
+            }
         }
 
         /* respect if_include/if_exclude subnets/ifaces from the user */
