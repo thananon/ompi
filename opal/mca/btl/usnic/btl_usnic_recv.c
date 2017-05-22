@@ -345,6 +345,20 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         OPAL_THREAD_UNLOCK(&btl_usnic_lock);
         goto repost;
     }
+    /***********************************************************************/
+    /* Frag is a handshake message */
+    else if (bseg->us_btl_header->payload_type == OPAL_BTL_USNIC_PAYLOAD_TYPE_HANDSHAKE) {
+
+        /* If we have already done this, drop it */
+        if(endpoint->cached_endpoint != (uint64_t) NULL) { goto repost; }
+
+        /* Read the peer endpoint pointer and cache it in this endpoint */
+        endpoint->cached_endpoint = bseg->us_hdr.uus_btl_handshake_header->peer_endpoint;
+
+	    /* Just making sure */
+        assert(endpoint->cached_endpoint != (uint64_t) NULL);
+	    goto repost;
+    }
 
     /***********************************************************************/
     /* Have no idea what the frag is; drop it */
@@ -357,6 +371,7 @@ void opal_btl_usnic_recv_call(opal_btl_usnic_module_t *module,
         }
         goto repost;
     }
+
 
     /***********************************************************************/
  repost:

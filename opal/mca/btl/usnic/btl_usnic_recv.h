@@ -153,7 +153,7 @@ opal_btl_usnic_check_rx_seq(
     /*
      * Handle piggy-backed ACK if present
      */
-    if (seg->rs_base.us_btl_header->ack_present) {
+    if (seg->rs_base.us_btl_header->btl_header_flags & OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT) {
 #if MSGDEBUG1
         opal_output(0, "Handle piggy-packed ACK seq %"UDSEQ"\n", seg->rs_base.us_btl_header->ack_seq);
 #endif
@@ -289,8 +289,19 @@ opal_btl_usnic_recv_fast(opal_btl_usnic_module_t *module,
 
     bseg = &seg->rs_base;
 
-    /* Find out who sent this segment */
-    endpoint = lookup_sender(module, bseg);
+    /* If we did the handshake, the segment contained our endpoint, just use it. */
+    if(OPAL_LIKELY(bseg->us_btl_header->btl_header_flags & OPAL_BTL_USNIC_HEADER_FLAG_ENDPOINT_CACHED)){
+        endpoint = (opal_btl_usnic_endpoint_t*) bseg->us_btl_header->sender;
+    }
+    else {
+        /* Otherwise, find out who sent this segment */
+        endpoint = lookup_sender(module, bseg);
+
+        /* and try to send the handshake again */
+        if(NULL != endpoint) {
+            opal_btl_usnic_handshake(module, endpoint);
+        }
+    }
     seg->rs_endpoint = endpoint;
 
 #if 0
@@ -403,8 +414,19 @@ opal_btl_usnic_recv(opal_btl_usnic_module_t *module,
 
     bseg = &seg->rs_base;
 
-    /* Find out who sent this segment */
-    endpoint = lookup_sender(module, bseg);
+    /* If the segment contained a cached endpoint, we use that */
+    if(OPAL_LIKELY(bseg->us_btl_header->btl_header_flags & OPAL_BTL_USNIC_HEADER_FLAG_ENDPOINT_CACHED)) {
+        endpoint = (opal_btl_usnic_endpoint_t*) bseg->us_btl_header->sender;
+    }
+    else {
+        /* Otherwise, find out who sent this segment */
+        endpoint = lookup_sender(module, bseg);
+
+        /* and try to send the handshake again */
+        if(NULL != endpoint) {
+            opal_btl_usnic_handshake(module, endpoint);
+        }
+    }
     seg->rs_endpoint = endpoint;
 
     /* If this is a short incoming message (i.e., the message is

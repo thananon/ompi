@@ -83,6 +83,9 @@ void opal_btl_usnic_ack_timeout(opal_hotel_t *hotel, int room_num,
 void opal_btl_usnic_handle_ack(opal_btl_usnic_endpoint_t *endpoint,
                                opal_btl_usnic_seq_t ack_seq);
 
+void opal_btl_usnic_handshake(opal_btl_usnic_module_t *module,
+                              opal_btl_usnic_endpoint_t *endpoint);
+
 static inline void
 opal_btl_usnic_piggyback_ack(
     opal_btl_usnic_endpoint_t *endpoint,
@@ -93,13 +96,13 @@ opal_btl_usnic_piggyback_ack(
         opal_btl_usnic_remove_from_endpoints_needing_ack(endpoint);
         sseg->ss_base.us_btl_header->ack_seq =
             SEQ_DIFF(endpoint->endpoint_next_contig_seq_to_recv, 1);
-        sseg->ss_base.us_btl_header->ack_present = 1;
+        sseg->ss_base.us_btl_header->btl_header_flags |= OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT;
 #if MSGDEBUG1
         opal_output(0, "Piggy-backing ACK for sequence %"UDSEQ"\n",
                 sseg->ss_base.us_btl_header->ack_seq);
 #endif
     } else {
-        sseg->ss_base.us_btl_header->ack_present = 0;
+        sseg->ss_base.us_btl_header->btl_header_flags &= ~OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT;
     }
 }
 

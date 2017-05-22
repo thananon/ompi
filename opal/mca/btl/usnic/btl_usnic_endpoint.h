@@ -181,6 +181,7 @@ typedef struct mca_btl_base_endpoint_t {
 
     bool endpoint_connectivity_checked;
     bool endpoint_on_all_endpoints;
+    uint64_t cached_endpoint;
 } mca_btl_base_endpoint_t;
 
 typedef mca_btl_base_endpoint_t opal_btl_usnic_endpoint_t;

@@ -196,6 +196,53 @@ opal_btl_usnic_handle_ack(
 }
 
 /*
+ * Send HANDSHAKE control message containing the endpoint we use to
+ * communicate with the peer. This is one sided, the peer will do
+ * the same thing. */
+void
+opal_btl_usnic_handshake(
+    opal_btl_usnic_module_t *module,
+    opal_btl_usnic_endpoint_t *endpoint)
+{
+    opal_btl_usnic_ack_segment_t *handshake = {0};
+    opal_btl_usnic_segment_t *bseg;
+
+
+    assert(endpoint);
+
+    /* Get an ACK frag! Because ACK has the priority over normal frag.
+     * And also ACK has everything we need. Why not use it, right? */
+    handshake = opal_btl_usnic_ack_segment_alloc(module);
+
+    /* If we didn't get the fragment, well..., giveup.
+     * No caching, fallback to hash table lookup. */
+    if (OPAL_UNLIKELY(NULL == handshake)) {
+        return;
+    }
+
+    bseg = &handshake->ss_base;
+
+    /* Now we change the payload type because this is not an actual ACK */
+    bseg->us_btl_handshake_header->hs_hdr.payload_type = OPAL_BTL_USNIC_PAYLOAD_TYPE_HANDSHAKE;
+    handshake->ss_len = sizeof(opal_btl_usnic_btl_handshake_header_t);
+
+    /* Attach this endpoint onto the header, dont worry about the type.
+     * We will cast it into void* later on. */
+    bseg->us_btl_handshake_header->peer_endpoint = (int64_t) endpoint;
+
+    /* Do we need to check the connectivity?  If enabled, we'll check
+       the connectivity at either first send to peer X or first ACK to
+       peer X. */
+    opal_btl_usnic_check_connectivity(module, endpoint);
+
+    /* send the handshake, again we use ACK segment as a base.
+     * So we post it as an ACK but dont get confused by the name! */
+    opal_btl_usnic_post_ack(module, endpoint, handshake);
+
+    return;
+}
+
+/*
  * Send an ACK
  */
 int

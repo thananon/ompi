@@ -979,7 +979,7 @@ usnic_do_resends(
         endpoint = sseg->ss_parent_frag->sf_endpoint;
 
         /* clobber any stale piggy-backed ACK */
-        sseg->ss_base.us_btl_header->ack_present = 0;
+        sseg->ss_base.us_btl_header->btl_header_flags &= ~OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT;
 
         /* Only post this segment if not already posted */
         if (sseg->ss_send_posted == 0) {

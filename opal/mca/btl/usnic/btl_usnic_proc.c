@@ -35,6 +35,7 @@
 #include "btl_usnic_module.h"
 #include "btl_usnic_util.h"
 #include "btl_usnic_graph.h"
+#include "btl_usnic_ack.h"
 
 /* larger weight values are more desirable (i.e., worth, not cost) */
 enum {
@@ -784,6 +785,7 @@ opal_btl_usnic_create_endpoint(opal_btl_usnic_module_t *module,
     opal_mutex_unlock(&module->all_endpoints_lock);
 
     *endpoint_o = endpoint;
+
     return OPAL_SUCCESS;
 }
 

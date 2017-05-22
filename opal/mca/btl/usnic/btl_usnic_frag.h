@@ -54,6 +54,11 @@ typedef enum {
     OPAL_BTL_USNIC_FRAG_PUT_DEST
 } opal_btl_usnic_frag_type_t;
 
+enum {
+    OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT = 0x0001,
+    OPAL_BTL_USNIC_HEADER_FLAG_ENDPOINT_CACHED = 0x0002
+};
+
 static inline const char *
 usnic_frag_type(opal_btl_usnic_frag_type_t t)
 {
@@ -116,7 +121,8 @@ typedef struct opal_btl_usnic_reg_t {
 typedef enum {
     OPAL_BTL_USNIC_PAYLOAD_TYPE_ACK = 1,
     OPAL_BTL_USNIC_PAYLOAD_TYPE_FRAG = 2,       /* an entire fragment */
-    OPAL_BTL_USNIC_PAYLOAD_TYPE_CHUNK = 3       /* one chunk of fragment */
+    OPAL_BTL_USNIC_PAYLOAD_TYPE_CHUNK = 3,      /* one chunk of fragment */
+    OPAL_BTL_USNIC_PAYLOAD_TYPE_HANDSHAKE = 4   /* Handshaking message */
 } opal_btl_usnic_payload_type_t;
 
 /**
@@ -145,7 +151,7 @@ typedef struct {
     uint8_t payload_type;
 
     /* true if there is piggy-backed ACK */
-    uint8_t ack_present;
+    uint8_t btl_header_flags;
 
     /* tag for upper layer */
     mca_btl_base_tag_t tag;
@@ -162,6 +168,11 @@ typedef struct {
     uint32_t ch_frag_offset;    /* where in fragment this goes */
 } opal_btl_usnic_btl_chunk_header_t;
 
+typedef struct {
+    opal_btl_usnic_btl_header_t hs_hdr;
+    uint64_t peer_endpoint;
+} opal_btl_usnic_btl_handshake_header_t;
+
 /**
  * Descriptor for a common segment.  This is exactly one packet and may
  * be sent or received.
@@ -175,10 +186,11 @@ typedef struct opal_btl_usnic_segment_t {
     union {
         opal_btl_usnic_btl_header_t *uus_btl_header;
         opal_btl_usnic_btl_chunk_header_t *uus_btl_chunk_header;
+	opal_btl_usnic_btl_handshake_header_t *uus_btl_handshake_header;
     } us_hdr;
 #define us_btl_header us_hdr.uus_btl_header
 #define us_btl_chunk_header us_hdr.uus_btl_chunk_header
-
+#define us_btl_handshake_header us_hdr.uus_btl_handshake_header
     union {
         uint8_t *raw;
         void *ompi_header;

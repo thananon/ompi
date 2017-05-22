@@ -99,7 +99,7 @@ ack_seg_constructor(
     /* ACK value embedded in BTL header */
     bseg->us_btl_header->payload_type = OPAL_BTL_USNIC_PAYLOAD_TYPE_ACK;
     bseg->us_btl_header->payload_len = 0;
-    bseg->us_btl_header->ack_present = 1;
+    bseg->us_btl_header->btl_header_flags |= OPAL_BTL_USNIC_HEADER_FLAG_ACK_PRESENT;
 
     ack->ss_len = sizeof(bseg->us_btl_header);
 }
