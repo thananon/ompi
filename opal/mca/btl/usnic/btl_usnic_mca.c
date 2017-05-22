@@ -189,7 +189,7 @@ int opal_btl_usnic_component_register(void)
 
     CHECK(reg_string("if_exclude",
                      "Comma-delimited list of usNIC devices/networks to be excluded (empty value means to not exclude any usNICs).  Mutually exclusive with btl_usnic_if_include.",
-                     NULL, &mca_btl_usnic_component.if_exclude,
+                     "127.0.0.1/8", &mca_btl_usnic_component.if_exclude,
                      REGSTR_EMPTY_OK, OPAL_INFO_LVL_1));
 
     CHECK(reg_int("stats",
@@ -325,5 +325,9 @@ int opal_btl_usnic_component_register(void)
                      &mca_btl_usnic_component.connectivity_map_prefix,
                      REGSTR_EMPTY_OK, OPAL_INFO_LVL_3));
 
+    CHECK(reg_string("libfabric_provider",
+                     "Request provider from libfabric layer",
+                     "usnic", &mca_btl_usnic_component.libfabric_provider,
+                     REGSTR_MAX, OPAL_INFO_LVL_8));
     return ret;
 }

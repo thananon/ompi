@@ -40,7 +40,6 @@ sources = \
     btl_usnic_module.c \
     btl_usnic_module.h \
     btl_usnic.h \
-    btl_usnic_ack.c \
     btl_usnic_ack.h \
     btl_usnic_component.c \
     btl_usnic_connectivity.h \
@@ -68,6 +67,8 @@ sources = \
     btl_usnic_util.h \
     btl_usnic_test.c \
     btl_usnic_test.h \
+    btl_usnic_rdma.c \
+    btl_usnic_rdma.h \
     $(test_sources)
 
 # Make the output library in this directory, and name it either

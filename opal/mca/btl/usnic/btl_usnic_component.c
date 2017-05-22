@@ -83,6 +83,7 @@
 #include "btl_usnic_recv.h"
 #include "btl_usnic_proc.h"
 #include "btl_usnic_test.h"
+#include "btl_usnic_rdma.h"
 
 #define OPAL_BTL_USNIC_NUM_COMPLETIONS 500
 
@@ -152,7 +153,8 @@ opal_btl_usnic_component_t mca_btl_usnic_component = {
 
         .btl_init = usnic_component_init,
         .btl_progress = usnic_component_progress,
-    }
+    },
+    .libfabric_use_usnic = false 
 };
 
 
@@ -450,14 +452,42 @@ static usnic_if_filter_t *parse_ifex_str(const char *orig_str,
         /* assume that all interface names begin with an alphanumeric
          * character, not a number */
         if (isalpha(argv[i][0])) {
-            filter->elts[filter->n_elt].is_netmask = false;
-            filter->elts[filter->n_elt].if_name = strdup(argv[i]);
-            opal_output_verbose(20, USNIC_OUT,
-                                "btl:usnic:parse_ifex_str: parsed %s device name: %s",
-                                name, filter->elts[filter->n_elt].if_name);
+            /* Check if the OS know about this name. If yes, convert it to CIDR. */
+            struct sockaddr mapped_addr;
+            uint32_t mapped_mask;
+            int if_index = opal_ifnametoindex(argv[i]);
 
+            /* If we fail, it might be a libfabric name. So keep the name in the filter. */
+            if (-1 == if_index) {
+                filter->elts[filter->n_elt].is_netmask = false;
+                filter->elts[filter->n_elt].if_name = strdup(argv[i]);
+                opal_output_verbose(20, USNIC_OUT,
+                                    "btl:usnic:parse_ifex_str: parsed %s device name: %s",
+                                    name, filter->elts[filter->n_elt].if_name);
+
+                ++filter->n_elt;
+                continue;
+            }
+
+            /* If we get an index, lets get the mask and IP. */
+            ret = opal_ifindextoaddr(if_index, &mapped_addr, sizeof(struct sockaddr));
+            assert(OPAL_SUCCESS == ret);
+
+            ret = opal_ifindextomask(if_index, &mapped_mask, sizeof(uint32_t));
+            assert(OPAL_SUCCESS == ret);
+
+            opal_output_verbose(20, USNIC_OUT,
+                                "converted name %s to address.",
+                                argv[i]);
+
+            filter->elts[filter->n_elt].is_netmask = true;
+            filter->elts[filter->n_elt].if_name = NULL;
+            filter->elts[filter->n_elt].netmask_be = usnic_cidrlen_to_netmask(mapped_mask);
+            filter->elts[filter->n_elt].addr_be = ((struct sockaddr_in*) &mapped_addr)->sin_addr.s_addr &
+                                                usnic_cidrlen_to_netmask(mapped_mask);
             ++filter->n_elt;
             continue;
+
         }
 
         /* Found a subnet notation.  Convert it to an IP
@@ -537,6 +567,8 @@ static bool filter_module(opal_btl_usnic_module_t *module,
 {
     int i;
     uint32_t module_mask;
+    uint32_t loopback_mask;
+    uint32_t loopback_netmask = usnic_cidrlen_to_netmask(8);
     struct sockaddr_in *src;
     struct fi_usnic_info *uip;
     struct fi_info *info;
@@ -549,6 +581,7 @@ static bool filter_module(opal_btl_usnic_module_t *module,
     linux_device_name = module->linux_device_name;
     module_mask = src->sin_addr.s_addr & uip->ui.v1.ui_netmask_be;
     match = false;
+
     for (i = 0; i < filter->n_elt; ++i) {
         if (filter->elts[i].is_netmask) {
             /* conservative: we also require the netmask to match */
@@ -611,7 +644,7 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     int min_distance, num_local_procs;
     struct fi_info *info_list;
     struct fi_info *info;
-    struct fid_fabric *fabric;
+   struct fid_fabric *fabric;
     struct fid_domain *domain;
     int ret;
 
@@ -706,13 +739,24 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
     struct fi_fabric_attr fabric_attr = {0};
     struct fi_rx_attr rx_attr = {0};
     struct fi_tx_attr tx_attr = {0};
+    struct fi_domain_attr domain_attr = {0};
 
-    /* We only want providers named "usnic" that are of type EP_DGRAM */
+    /* We want providers named "usnic" if not stated otherwise.  with EP type EP_RDM */
     fabric_attr.prov_name = "usnic";
-    ep_attr.type = FI_EP_DGRAM;
+
+    /* Check if the user request usnic provider or not */
+    if( !strcmp(mca_btl_usnic_component.libfabric_provider,"usnic")) {
+	    mca_btl_usnic_component.libfabric_use_usnic = true;
+    }
+
+    /* Ask usnic for the provider user requested with EP_RDM */
+    fabric_attr.prov_name = mca_btl_usnic_component.libfabric_provider;
+    ep_attr.type = FI_EP_RDM;
+    domain_attr.mr_mode = FI_MR_BASIC;
 
     hints.caps = FI_MSG;
     hints.mode = FI_LOCAL_MR | FI_MSG_PREFIX;
+    hints.domain_attr = &domain_attr;
     hints.addr_format = FI_SOCKADDR;
     hints.ep_attr = &ep_attr;
     hints.fabric_attr = &fabric_attr;
@@ -739,12 +783,14 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
         return NULL;
     }
 
-    /* Do quick sanity check to ensure that we can lock memory (which
-       is required for registered memory). */
-    if (OPAL_SUCCESS != check_reg_mem_basics()) {
-        opal_output_verbose(5, USNIC_OUT,
-                            "btl:usnic: disqualifiying myself due to lack of lockable memory");
-        return NULL;
+    if (mca_btl_usnic_component.libfabric_use_usnic) {
+        /* Do quick sanity check to ensure that we can lock memory (which
+           is required for registered memory). */
+        if (OPAL_SUCCESS != check_reg_mem_basics()) {
+            opal_output_verbose(5, USNIC_OUT,
+                                "btl:usnic: disqualifiying myself due to lack of lockable memory");
+            return NULL;
+        }
     }
 
     /************************************************************************
@@ -819,12 +865,11 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
               i < mca_btl_usnic_component.max_modules);
              ++i, info = info->next) {
 
-        // The fabric/domain names changed at libfabric API v1.4 (see above).
+        /* The fabric/domain names (for usnic provider) changed at libfabric API v1.4 (see above). */
         char *linux_device_name;
-        if (libfabric_api <= FI_VERSION(1, 3)) {
-            linux_device_name = info->fabric_attr->name;
-        } else {
-            linux_device_name = info->domain_attr->name;
+        linux_device_name = info->domain_attr->name;
+	    if (mca_btl_usnic_component.libfabric_use_usnic && libfabric_api<= FI_VERSION(1,3)) {
+                linux_device_name = info->fabric_attr->name;
         }
 
         ret = fi_fabric(info->fabric_attr, &fabric, NULL);
@@ -875,41 +920,76 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
             goto error;
         }
 
-        /* Obtain usnic-specific device info (e.g., netmask) that
-           doesn't come in the normal fi_getinfo(). This allows us to
-           do filtering, later. */
-        ret = fi_open_ops(&fabric->fid, FI_USNIC_FABRIC_OPS_1, 0,
-                (void **)&module->usnic_fabric_ops, NULL);
-        if (ret != 0) {
-            opal_output_verbose(5, USNIC_OUT,
-                        "btl:usnic: device %s fabric_open_ops failed %d (%s)",
-                        module->linux_device_name, ret, fi_strerror(-ret));
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-            continue;
-        }
+	if (mca_btl_usnic_component.libfabric_use_usnic) {
+            /* Obtain usnic-specific device info (e.g., netmask) that
+               doesn't come in the normal fi_getinfo(). This allows us to
+               do filtering, later. */
+            ret = fi_open_ops(&fabric->fid, FI_USNIC_FABRIC_OPS_1, 0,
+                    (void **)&module->usnic_fabric_ops, NULL);
+            if (ret != 0) {
+                opal_output_verbose(5, USNIC_OUT,
+                            "btl:usnic: device %s fabric_open_ops failed %d (%s)",
+                            module->linux_device_name, ret, fi_strerror(-ret));
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+                continue;
+            }
 
-        ret =
-            module->usnic_fabric_ops->getinfo(1,
-                                            fabric,
-                                            &module->usnic_info);
-        if (ret != 0) {
+            ret =
+                module->usnic_fabric_ops->getinfo(1,
+                                                fabric,
+                                                &module->usnic_info);
+            if (ret != 0) {
+                opal_output_verbose(5, USNIC_OUT,
+                            "btl:usnic: device %s usnic_getinfo failed %d (%s)",
+                            linux_device_name, ret, fi_strerror(-ret));
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+                continue;
+            }
             opal_output_verbose(5, USNIC_OUT,
-                        "btl:usnic: device %s usnic_getinfo failed %d (%s)",
-                        module->linux_device_name, ret, fi_strerror(-ret));
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-            continue;
+                                "btl:usnic: device %s usnic_info: link speed=%d, netmask=0x%x, ifname=%s, num_vf=%d, qp/vf=%d, cq/vf=%d",
+                                module->linux_device_name,
+                                (unsigned int) module->usnic_info.ui.v1.ui_link_speed,
+                                (unsigned int) module->usnic_info.ui.v1.ui_netmask_be,
+                                module->usnic_info.ui.v1.ui_ifname,
+                                module->usnic_info.ui.v1.ui_num_vf,
+                                module->usnic_info.ui.v1.ui_qp_per_vf,
+                                module->usnic_info.ui.v1.ui_cq_per_vf);
+
+            /* The first time through, check some usNIC configuration
+               minimum settings with information we got back from the fi_*
+               probes (these are VIC-wide settings -- they don't change
+               for each module we create, so we only need to check
+               once). */
+            if (0 == j &&
+                check_usnic_config(module, num_local_procs) != OPAL_SUCCESS) {
+                opal_output_verbose(5, USNIC_OUT,
+                                     "btl:usnic: device %s is not provisioned with enough resources -- skipping",
+                                     module->linux_device_name);
+                fi_close(&domain->fid);
+                fi_close(&fabric->fid);
+
+                mca_btl_usnic_component.num_modules = 0;
+                goto error;
+            }
+
+
+        } else {
+        /* We don't have usnic_getinfo, we will try to get the information via OPAL interface instead.
+         * The only information we need here is the device's netmask for later filtering. */
+            int ret;
+            int fabric_index;
+            uint32_t fabric_mask;
+
+            fabric_index = opal_ifnametoindex(module->linux_device_name);
+            if (fabric_index != -1) {  // Success
+                ret = opal_ifindextomask(fabric_index, &fabric_mask, sizeof(uint32_t));
+                assert(OPAL_SUCCESS == ret);
+
+                module->usnic_info.ui.v1.ui_netmask_be = usnic_cidrlen_to_netmask(fabric_mask);
+            }
         }
-        opal_output_verbose(5, USNIC_OUT,
-                            "btl:usnic: device %s usnic_info: link speed=%d, netmask=0x%x, ifname=%s, num_vf=%d, qp/vf=%d, cq/vf=%d",
-                            module->linux_device_name,
-                            (unsigned int) module->usnic_info.ui.v1.ui_link_speed,
-                            (unsigned int) module->usnic_info.ui.v1.ui_netmask_be,
-                            module->usnic_info.ui.v1.ui_ifname,
-                            module->usnic_info.ui.v1.ui_num_vf,
-                            module->usnic_info.ui.v1.ui_qp_per_vf,
-                            module->usnic_info.ui.v1.ui_cq_per_vf);
 
         /* respect if_include/if_exclude subnets/ifaces from the user */
         if (filter != NULL) {
@@ -925,24 +1005,6 @@ static mca_btl_base_module_t** usnic_component_init(int* num_btl_modules,
                 continue;
             }
         }
-
-        /* The first time through, check some usNIC configuration
-           minimum settings with information we got back from the fi_*
-           probes (these are VIC-wide settings -- they don't change
-           for each module we create, so we only need to check
-           once). */
-        if (0 == j &&
-            check_usnic_config(module, num_local_procs) != OPAL_SUCCESS) {
-            opal_output_verbose(5, USNIC_OUT,
-                                "btl:usnic: device %s is not provisioned with enough resources -- skipping",
-                                module->linux_device_name);
-            fi_close(&domain->fid);
-            fi_close(&fabric->fid);
-
-            mca_btl_usnic_component.num_modules = 0;
-            goto error;
-        }
-
         /*************************************************/
         /* Below this point, we know we want this device */
         /*************************************************/
@@ -1193,9 +1255,11 @@ static int usnic_handle_completion(
 {
     opal_btl_usnic_segment_t* seg;
     opal_btl_usnic_recv_segment_t* rseg;
+    opal_btl_usnic_put_segment_t* rdma_seg;
 
     seg = (opal_btl_usnic_segment_t*)completion->op_context;
     rseg = (opal_btl_usnic_recv_segment_t*)seg;
+    rdma_seg = (opal_btl_usnic_rdma_segment_t*)seg;
 
     ++module->stats.num_seg_total_completions;
 
@@ -1207,15 +1271,6 @@ static int usnic_handle_completion(
     /* Handle work completions */
     switch(seg->us_type) {
 
-    /**** Send ACK completions ****/
-    case OPAL_BTL_USNIC_SEG_ACK:
-        ++module->stats.num_seg_ack_completions;
-        opal_btl_usnic_ack_complete(module,
-                (opal_btl_usnic_ack_segment_t *)seg);
-        break;
-
-    /**** Send of frag segment completion (i.e., the MPI message's
-          one-and-only segment has completed sending) ****/
     case OPAL_BTL_USNIC_SEG_FRAG:
         ++module->stats.num_seg_frag_completions;
         opal_btl_usnic_frag_send_complete(module,
@@ -1235,6 +1290,14 @@ static int usnic_handle_completion(
         ++module->stats.num_seg_recv_completions;
         opal_btl_usnic_recv(module, rseg, channel);
         break;
+
+    case OPAL_BTL_USNIC_SEG_PUT:
+	opal_btl_usnic_rdma_complete(module, rdma_seg);
+	break;
+
+    case OPAL_BTL_USNIC_SEG_GET:
+	opal_btl_usnic_rdma_complete(module, rdma_seg);
+	break;
 
     default:
         BTL_ERROR(("Unhandled completion segment type %d", seg->us_type));
@@ -1379,7 +1442,6 @@ static int usnic_component_progress_2(void)
 /* could take indent as a parameter instead of hard-coding it */
 static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
 {
-    int i;
     opal_btl_usnic_frag_t *frag;
     opal_btl_usnic_send_segment_t *sseg;
     struct in_addr ia;
@@ -1408,46 +1470,40 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
         switch (frag->uf_type) {
             case OPAL_BTL_USNIC_FRAG_LARGE_SEND:
                 lsfrag = (opal_btl_usnic_large_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " tag=%"PRIu8" id=%"PRIu32" offset=%llu/%llu post_cnt=%"PRIu32" \n",
                         lsfrag->lsf_tag,
                         lsfrag->lsf_frag_id,
                         (unsigned long long)lsfrag->lsf_cur_offset,
                         (unsigned long long)lsfrag->lsf_base.sf_size,
-                        lsfrag->lsf_base.sf_seg_post_cnt,
-                        (unsigned long long)lsfrag->lsf_base.sf_ack_bytes_left);
+                        lsfrag->lsf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 
                 OPAL_LIST_FOREACH(sseg, &lsfrag->lsf_seg_chain,
                                   opal_btl_usnic_send_segment_t) {
                     /* chunk segs are just typedefs to send segs */
-                    opal_output(0, "        chunk seg %p, chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
+                    opal_output(0, "        chunk seg %p, chan=%s times_posted=%"PRIu32" \n",
                                 (void *)sseg,
                                 (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                                 "prio" : "data"),
-                                sseg->ss_hotel_room,
-                                sseg->ss_send_posted,
-                                (sseg->ss_ack_pending ? "true" : "false"));
+                                sseg->ss_send_posted);
                 }
             break;
 
             case OPAL_BTL_USNIC_FRAG_SMALL_SEND:
                 ssfrag = (opal_btl_usnic_small_send_frag_t *)frag;
-                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" ack_bytes_left=%llu\n",
+                snprintf(tmp, sizeof(tmp), " sf_size=%llu post_cnt=%"PRIu32" \n",
                         (unsigned long long)ssfrag->ssf_base.sf_size,
-                        ssfrag->ssf_base.sf_seg_post_cnt,
-                        (unsigned long long)ssfrag->ssf_base.sf_ack_bytes_left);
+                        ssfrag->ssf_base.sf_seg_post_cnt);
                 strncat(str, tmp, sizeof(str) - strlen(str) - 1);
                 opal_output(0, "%s", str);
 
                 sseg = &ssfrag->ssf_segment;
-                opal_output(0, "        small seg %p, chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
+                opal_output(0, "        small seg %p, chan=%s times_posted=%"PRIu32"\n",
                     (void *)sseg,
                     (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
                         "prio" : "data"),
-                    sseg->ss_hotel_room,
-                    sseg->ss_send_posted,
-                    (sseg->ss_ack_pending ? "true" : "false"));
+                    sseg->ss_send_posted);
             break;
 
             case OPAL_BTL_USNIC_FRAG_PUT_DEST:
@@ -1458,42 +1514,6 @@ static void dump_endpoint(opal_btl_usnic_endpoint_t *endpoint)
             break;
         }
     }
-
-    /* Now examine the hotel for this endpoint and dump any segments we find
-     * there.  Yes, this peeks at members that are technically "private", so
-     * eventually this should be done through some sort of debug or iteration
-     * interface in the hotel code. */
-    opal_output(0, "      endpoint->endpoint_sent_segs (%p):\n",
-           (void *)endpoint->endpoint_sent_segs);
-    for (i = 0; i < WINDOW_SIZE; ++i) {
-        sseg = endpoint->endpoint_sent_segs[i];
-        if (NULL != sseg) {
-            opal_output(0, "        [%d] sseg=%p %s chan=%s hotel=%d times_posted=%"PRIu32" pending=%s\n",
-                   i,
-                   (void *)sseg,
-                   usnic_seg_type_str(sseg->ss_base.us_type),
-                   (USNIC_PRIORITY_CHANNEL == sseg->ss_channel ?
-                    "prio" : "data"),
-                   sseg->ss_hotel_room,
-                   sseg->ss_send_posted,
-                   (sseg->ss_ack_pending ? "true" : "false"));
-        }
-    }
-
-    opal_output(0, "      ack_needed=%s n_t=%"UDSEQ" n_a=%"UDSEQ" n_r=%"UDSEQ" n_s=%"UDSEQ" rfstart=%"PRIu32"\n",
-                (endpoint->endpoint_ack_needed?"true":"false"),
-                endpoint->endpoint_next_seq_to_send,
-                endpoint->endpoint_ack_seq_rcvd,
-                endpoint->endpoint_next_contig_seq_to_recv,
-                endpoint->endpoint_highest_seq_rcvd,
-                endpoint->endpoint_rfstart);
-
-    if (dump_bitvectors) {
-        opal_btl_usnic_snprintf_bool_array(str, sizeof(str),
-                                           endpoint->endpoint_rcvd_segs,
-                                           WINDOW_SIZE);
-        opal_output(0, "      rcvd_segs 0x%s", str);
-    }
 }
 
 void opal_btl_usnic_component_debug(void)
@@ -1501,7 +1521,6 @@ void opal_btl_usnic_component_debug(void)
     int i;
     opal_btl_usnic_module_t *module;
     opal_btl_usnic_endpoint_t *endpoint;
-    opal_btl_usnic_send_segment_t *sseg;
     opal_list_item_t *item;
     const opal_proc_t *proc = opal_proc_local_get();
 
@@ -1522,12 +1541,6 @@ void opal_btl_usnic_component_debug(void)
             dump_endpoint(endpoint);
         }
 
-        opal_output(0, "  endpoints_that_need_acks:\n");
-        OPAL_LIST_FOREACH(endpoint, &module->endpoints_that_need_acks,
-                          opal_btl_usnic_endpoint_t) {
-            dump_endpoint(endpoint);
-        }
-
         /* the all_endpoints list uses a different list item member */
         opal_output(0, "  all_endpoints:\n");
         opal_mutex_lock(&module->all_endpoints_lock);
@@ -1539,12 +1552,6 @@ void opal_btl_usnic_component_debug(void)
             dump_endpoint(endpoint);
         }
         opal_mutex_unlock(&module->all_endpoints_lock);
-
-        opal_output(0, "  pending_resend_segs:\n");
-        OPAL_LIST_FOREACH(sseg, &module->pending_resend_segs,
-                          opal_btl_usnic_send_segment_t) {
-            opal_output(0, "    sseg %p\n", (void *)sseg);
-        }
 
         opal_btl_usnic_print_stats(module, "  manual", /*reset=*/false);
     }

@@ -94,6 +94,12 @@ static int channel_addr2str(opal_btl_usnic_module_t *module, int channel,
 }
 
 
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem (mca_btl_base_module_t *btl,
+		                                                   mca_btl_base_endpoint_t *endpoint,
+		                                                   void *base, size_t size, uint32_t flags);
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle);
+
 /*
  * Loop over a block of procs sent to us in add_procs and see if we
  * want to add a proc/endpoint for them.
@@ -897,18 +903,6 @@ static int usnic_finalize(struct mca_btl_base_module_t* btl)
     module->all_endpoints_constructed = false;
     opal_mutex_unlock(&module->all_endpoints_lock);
 
-    /* _flush_endpoint should have emptied this list */
-    assert(opal_list_is_empty(&(module->pending_resend_segs)));
-    OBJ_DESTRUCT(&module->pending_resend_segs);
-
-    /* Similarly, empty the endpoints_that_need_acks list so that
-       endpoints don't still have an endpoint_ack_li item still in
-       use */
-    while (!opal_list_is_empty(&(module->endpoints_that_need_acks))) {
-        (void) opal_list_remove_first(&(module->endpoints_that_need_acks));
-    }
-    OBJ_DESTRUCT(&module->endpoints_that_need_acks);
-
     /* Note that usnic_del_procs will have been called for *all* procs
        by this point, so the module->all_procs list will be empty.
        Destruct it. */
@@ -919,11 +913,10 @@ static int usnic_finalize(struct mca_btl_base_module_t* btl)
     }
     free(module->module_recv_buffers);
 
-    OBJ_DESTRUCT(&module->ack_segs);
     OBJ_DESTRUCT(&module->endpoints_with_sends);
     OBJ_DESTRUCT(&module->small_send_frags);
     OBJ_DESTRUCT(&module->large_send_frags);
-    OBJ_DESTRUCT(&module->put_dest_frags);
+    OBJ_DESTRUCT(&module->rdma_segs);
     OBJ_DESTRUCT(&module->chunk_segs);
     OBJ_DESTRUCT(&module->senders);
 
@@ -956,61 +949,6 @@ get_send_credits(struct opal_btl_usnic_channel_t *chan)
     return chan->credits;
 }
 
-static void
-usnic_do_resends(
-    opal_btl_usnic_module_t *module)
-{
-    opal_btl_usnic_send_segment_t *sseg;
-    opal_btl_usnic_endpoint_t *endpoint;
-    struct opal_btl_usnic_channel_t *data_channel;
-    int ret;
-
-    data_channel = &module->mod_channels[USNIC_DATA_CHANNEL];
-
-    while ((get_send_credits(data_channel) > 1) &&
-           !opal_list_is_empty(&module->pending_resend_segs)) {
-
-        /*
-         * If a segment is on the re-send list, it will not
-         * be in the retransmit hotel.  Post the segment, then check it in.
-         */
-        sseg = (opal_btl_usnic_send_segment_t *)
-            opal_list_remove_first(&module->pending_resend_segs);
-        endpoint = sseg->ss_parent_frag->sf_endpoint;
-
-        /* clobber any stale piggy-backed ACK */
-        sseg->ss_base.us_btl_header->ack_present = 0;
-
-        /* Only post this segment if not already posted */
-        if (sseg->ss_send_posted == 0) {
-
-            /* resends are always standard segments */
-            sseg->ss_channel = USNIC_DATA_CHANNEL;
-
-            /* re-send the segment (we have a send credit available) */
-            opal_btl_usnic_post_segment(module, endpoint, sseg);
-
-            /* consume a send credit for this endpoint.  May send us
-             * negative, oh well...  This is because the completion routine
-             * always increments send credits, and we must balance.
-             * Alternative is to mark this as a retrans segment and check in
-             * completion, but this ugly way avoids extra checks in the
-             * critical path.  And, really, respects the concept of send
-             * credits more.
-             */
-            --endpoint->endpoint_send_credits;
-            ++module->stats.num_resends;
-        }
-
-        /* restart the retrans timer */
-        ret = opal_hotel_checkin(&endpoint->endpoint_hotel,
-                sseg, &sseg->ss_hotel_room);
-        if (OPAL_UNLIKELY(OPAL_SUCCESS != ret)) {
-            BTL_ERROR(("hotel checkin failed\n"));
-            abort();    /* should not be possible */
-        }
-    }
-}
 
 /* Given a large send frag (which is at the head of the given endpoint's send
  * queue), generate a new segment, fill it with data, and
@@ -1119,24 +1057,9 @@ opal_btl_usnic_module_progress_sends(
     opal_btl_usnic_send_segment_t *sseg;
     opal_btl_usnic_endpoint_t *endpoint;
     struct opal_btl_usnic_channel_t *data_channel;
-    struct opal_btl_usnic_channel_t *prio_channel;
 
-    /*
-     * Post all the sends that we can
-     * resends 1st priority
-     * ACKs 2nd priority
-     * new sends 3rd
-     */
     data_channel = &module->mod_channels[USNIC_DATA_CHANNEL];
-    prio_channel = &module->mod_channels[USNIC_PRIORITY_CHANNEL];
-
-    /*
-     * Handle all the retransmits we can
-     */
     OPAL_THREAD_LOCK(&btl_usnic_lock);
-    if (OPAL_UNLIKELY(!opal_list_is_empty(&module->pending_resend_segs))) {
-        usnic_do_resends(module);
-    }
 
     /*
      * Keep sending as long as there are WQEs and something to do
@@ -1215,39 +1138,13 @@ opal_btl_usnic_module_progress_sends(
          * or no more send credits, remove from send list
          */
         if (opal_list_is_empty(&endpoint->endpoint_frag_send_queue) ||
-            endpoint->endpoint_send_credits <= 0 ||
-            !WINDOW_OPEN(endpoint)) {
-
-            opal_list_remove_item(&module->endpoints_with_sends,
-                    &endpoint->super);
-            endpoint->endpoint_ready_to_send = false;
+            endpoint->endpoint_send_credits <= 0 ) {
+                opal_list_remove_item(&module->endpoints_with_sends,
+                                      &endpoint->super);
+                endpoint->endpoint_ready_to_send = false;
         }
     }
 
-    /*
-     * Handle any ACKs that need to be sent
-     */
-    endpoint = opal_btl_usnic_get_first_endpoint_needing_ack(module);
-    while (get_send_credits(prio_channel) > 1 && endpoint != NULL) {
-        opal_btl_usnic_endpoint_t *next_endpoint;
-
-        /* get next in list */
-        next_endpoint = opal_btl_usnic_get_next_endpoint_needing_ack(endpoint);
-
-        /* Is it time to send ACK? */
-        if (endpoint->endpoint_acktime == 0 ||
-            endpoint->endpoint_acktime <= get_nsec()) {
-            if (OPAL_LIKELY(opal_btl_usnic_ack_send(module, endpoint) == OPAL_SUCCESS)) {
-                opal_btl_usnic_remove_from_endpoints_needing_ack(endpoint);
-            } else {
-                // If we fail, it means we're out of send credits on
-                // the ACK channel
-                break;
-            }
-        }
-
-        endpoint = next_endpoint;
-    }
     OPAL_THREAD_UNLOCK(&btl_usnic_lock);
 }
 
@@ -1292,7 +1189,6 @@ usnic_send(
     frag->sf_base.uf_remote_seg[0].seg_addr.pval = NULL;      /* not a PUT */
 
     opal_btl_usnic_compute_sf_size(frag);
-    frag->sf_ack_bytes_left = frag->sf_size;
 
 #if MSGDEBUG2
     opal_output(0, "usnic_send: frag=%p, endpoint=%p, tag=%d, sf_size=%d\n",
@@ -1316,16 +1212,15 @@ usnic_send(
      * then inline and fastpath it
      */
     if (frag->sf_base.uf_type == OPAL_BTL_USNIC_FRAG_SMALL_SEND &&
-            frag->sf_ack_bytes_left < module->max_tiny_payload &&
-            WINDOW_OPEN(endpoint) &&
-            (get_send_credits(&module->mod_channels[USNIC_DATA_CHANNEL]) >=
-             module->mod_channels[USNIC_DATA_CHANNEL].fastsend_wqe_thresh)) {
+            frag->sf_size < module->max_tiny_payload &&
+            (get_send_credits(&module->mod_channels[USNIC_PRIORITY_CHANNEL]) >=
+             module->mod_channels[USNIC_PRIORITY_CHANNEL].fastsend_wqe_thresh)) {
         size_t payload_len;
 
         sfrag = (opal_btl_usnic_small_send_frag_t *)frag;
         sseg = &sfrag->ssf_segment;
 
-        payload_len = frag->sf_ack_bytes_left;
+        payload_len = frag->sf_size;
         sseg->ss_base.us_btl_header->payload_len = payload_len;
 
 
@@ -1385,7 +1280,7 @@ usnic_send(
          * another file entirely, else the compiler tried to be helpful
          * and inline all by itself.
          */
-        rc = opal_btl_usnic_finish_put_or_send(module, endpoint, frag, tag);
+        rc = opal_btl_usnic_finish_send(module, endpoint, frag, tag);
         /* FIXME can we clarify flag set/clear ordering? */
         frag->sf_base.uf_base.des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     }
@@ -1426,11 +1321,18 @@ static int usnic_reg_mr(void* reg_data, void* base, size_t size,
     opal_btl_usnic_module_t* mod = (opal_btl_usnic_module_t*)reg_data;
     opal_btl_usnic_reg_t* ur = (opal_btl_usnic_reg_t*)reg;
     int rc;
+    static int id = 0;
+    uint64_t access_flag = 0;
 
-    rc = fi_mr_reg(mod->domain, base, size, 0, 0, 0, 0, &ur->ur_mr, NULL);
+    access_flag |= FI_REMOTE_WRITE | FI_REMOTE_READ;
+    rc = fi_mr_reg(mod->domain, base, size, access_flag, 0, ++id, 0, &ur->ur_mr, NULL);
+
     if (0 != rc) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
+
+    ur->handle.rkey = fi_mr_key(ur->ur_mr);
+    ur->handle.desc = fi_mr_desc(ur->ur_mr);
 
     return OPAL_SUCCESS;
 }
@@ -1868,9 +1770,7 @@ static int init_one_channel(opal_btl_usnic_module_t *module,
                                         free_list_init,
                                         otherwise ctx gets
                                         clobbered */
-    if (OPAL_SUCCESS != rc) {
-        goto error;
-    }
+    assert(OPAL_SUCCESS == rc);
 
     /* Post receive descriptors */
     for (i = 0; i < rd_num; i++) {
@@ -1953,11 +1853,17 @@ static void init_local_modex_part1(opal_btl_usnic_module_t *module)
     struct fi_usnic_info *uip = &module->usnic_info;
     struct sockaddr_in *sin;
 
+    /* If libfabric returns some big number, we will just set it
+     * to the maximum of what we need */
+    if(info->ep_attr->max_msg_size > MAX_EP_MSG_SIZE)
+	info->ep_attr->max_msg_size = MAX_EP_MSG_SIZE;
+
     sin = info->src_addr;
     modex->ipv4_addr =       sin->sin_addr.s_addr;
     modex->netmask =         uip->ui.v1.ui_netmask_be;
     modex->max_msg_size =    info->ep_attr->max_msg_size;
     modex->link_speed_mbps = uip->ui.v1.ui_link_speed;
+
 
     opal_btl_usnic_snprintf_ipv4_addr(module->if_ipv4_addr_str,
                                       sizeof(module->if_ipv4_addr_str),
@@ -2092,7 +1998,7 @@ static void init_payload_lengths(opal_btl_usnic_module_t *module)
 
     /* Priorirty queue MTU and max size */
     if (0 == module->max_tiny_msg_size) {
-        module->max_tiny_msg_size = 768;
+        module->max_tiny_msg_size = MAX_EP_TINY_MSG_SIZE;
     }
     module->max_tiny_payload = module->max_tiny_msg_size -
         sizeof(opal_btl_usnic_btl_header_t);
@@ -2242,10 +2148,12 @@ static int init_channels(opal_btl_usnic_module_t *module)
         goto destroy;
     }
 
-    rc = fi_open_ops(&module->av->fid, FI_USNIC_AV_OPS_1, 0,
-            (void **)&module->usnic_av_ops, NULL);
-    if (rc != OPAL_SUCCESS) {
-        goto destroy;
+    if (mca_btl_usnic_component.libfabric_use_usnic) {
+        rc = fi_open_ops(&module->av->fid, FI_USNIC_AV_OPS_1, 0,
+                (void **)&module->usnic_av_ops, NULL);
+        if (rc != OPAL_SUCCESS) {
+            goto destroy;
+        }
     }
 
     memset(&eq_attr, 0, sizeof(eq_attr));
@@ -2352,10 +2260,6 @@ static void init_random_objects(opal_btl_usnic_module_t *module)
     module->all_endpoints_constructed = true;
     opal_mutex_unlock(&module->all_endpoints_lock);
 
-    /* Pending send segs list */
-    OBJ_CONSTRUCT(&module->pending_resend_segs, opal_list_t);
-    OBJ_CONSTRUCT(&module->endpoints_that_need_acks, opal_list_t);
-
     /* list of endpoints that are ready to send */
     OBJ_CONSTRUCT(&module->endpoints_with_sends, opal_list_t);
 }
@@ -2406,24 +2310,6 @@ static void init_freelists(opal_btl_usnic_module_t *module)
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
 
-    OBJ_CONSTRUCT(&module->put_dest_frags, opal_free_list_t);
-    rc = usnic_compat_free_list_init(&module->put_dest_frags,
-                             sizeof(opal_btl_usnic_put_dest_frag_t) +
-                                 mca_btl_usnic_component.prefix_send_offset,
-                             opal_cache_line_size,
-                             OBJ_CLASS(opal_btl_usnic_put_dest_frag_t),
-                             0,  /* payload size */
-                             0,  /* payload align */
-                             module->sd_num / 8,
-                             -1,
-                             module->sd_num / 8,
-                             NULL,
-                             0 /* mpool reg flags */,
-                             NULL /* unused0 */,
-                             NULL /* item_init */,
-                             NULL /* item_init_context */);
-    assert(OPAL_SUCCESS == rc);
-
     /* list of segments to use for sending */
     OBJ_CONSTRUCT(&module->chunk_segs, opal_free_list_t);
     rc = usnic_compat_free_list_init(&module->chunk_segs,
@@ -2443,29 +2329,26 @@ static void init_freelists(opal_btl_usnic_module_t *module)
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
 
-    /* ACK segments freelist */
-    uint32_t ack_segment_len;
-    ack_segment_len = (sizeof(opal_btl_usnic_btl_header_t) +
-            opal_cache_line_size - 1) & ~(opal_cache_line_size - 1);
-    OBJ_CONSTRUCT(&module->ack_segs, opal_free_list_t);
-    rc = usnic_compat_free_list_init(&module->ack_segs,
-                             sizeof(opal_btl_usnic_ack_segment_t) +
+    OBJ_CONSTRUCT(&module->rdma_segs, opal_free_list_t);
+    rc = usnic_compat_free_list_init(&module->rdma_segs,
+                             sizeof(opal_btl_usnic_rdma_segment_t) +
                                  mca_btl_usnic_component.prefix_send_offset,
                              opal_cache_line_size,
-                             OBJ_CLASS(opal_btl_usnic_ack_segment_t),
-                             ack_segment_len,
-                             opal_cache_line_size,
-                             module->sd_num * 4,
+                             OBJ_CLASS(opal_btl_usnic_rdma_segment_t),
+                             0,
+                             0,
+                             module->sd_num / 8,
                              -1,
-                             module->sd_num / 2,
-                             module->super.btl_mpool,
+                             module->sd_num / 8,
+                             NULL,
                              0 /* mpool reg flags */,
-                             module->rcache,
+                             NULL,
                              NULL /* item_init */,
                              NULL /* item_init_context */);
     assert(OPAL_SUCCESS == rc);
 
-    /*
+
+        /*
      * Initialize pools of large recv buffers
      *
      * NOTE: (last_pool < first_pool) is _not_ erroneous; recv buffer
@@ -2564,11 +2447,11 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_seg_size = sizeof(mca_btl_base_segment_t),
 #elif BTL_VERSION == 30
         .btl_atomic_flags = 0,
-        .btl_registration_handle_size = 0,
+        .btl_registration_handle_size = sizeof(mca_btl_base_registration_handle_t),
 
-        .btl_get_limit = 0,
+        .btl_get_limit = 1024 * 1024,
         .btl_get_alignment = 0,
-        .btl_put_limit = 0,
+        .btl_put_limit = 1024 * 1024,
         .btl_put_alignment = 0,
 
         .btl_atomic_op = NULL,
@@ -2583,7 +2466,11 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
             /* Need to set FLAGS_SINGLE_ADD_PROCS until
                btl_recv.h:lookup_sender() can handle an incoming
                message with an unknown sender. */
-            MCA_BTL_FLAGS_SINGLE_ADD_PROCS,
+            MCA_BTL_FLAGS_SINGLE_ADD_PROCS |
+	    /* experimental */
+	    MCA_BTL_FLAGS_PUT |
+	    MCA_BTL_FLAGS_GET |
+	    MCA_BTL_FLAGS_RDMA,
 
         .btl_add_procs = usnic_add_procs,
         .btl_del_procs = usnic_del_procs,
@@ -2596,11 +2483,49 @@ opal_btl_usnic_module_t opal_btl_usnic_module_template = {
         .btl_send = usnic_send,
         .btl_sendi = NULL,
         .btl_put = opal_btl_usnic_put,
-        .btl_get = NULL,
+        .btl_get = opal_btl_usnic_get,
         .btl_dump = mca_btl_base_dump,
 
         .btl_mpool = NULL,
         .btl_register_error = usnic_register_pml_err_cb,
-        .btl_ft_event = usnic_ft_event
+        .btl_ft_event = usnic_ft_event,
+
+	.btl_register_mem = mca_btl_usnic_register_mem,
+	.btl_deregister_mem = mca_btl_usnic_deregister_mem,
+
+	/* Copied from openib */
+	.btl_rndv_eager_limit = 12 * 1024,
+	.btl_rdma_pipeline_frag_size = 1024 * 1024,
+	.btl_rdma_pipeline_send_length = 1024 * 1024,
+	.btl_min_rdma_pipeline_size = 256 * 1024
     }
 };
+
+static mca_btl_base_registration_handle_t *mca_btl_usnic_register_mem(mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoint,
+		                                                  void *base, size_t size, uint32_t flags)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg;
+    int access_flags = flags & MCA_BTL_REG_FLAG_ACCESS_ANY;
+
+    int rc;
+    rc = module->rcache->rcache_register(module->rcache, base, size, 0, access_flags,
+		                         (mca_rcache_base_registration_t **) &reg);
+
+    if(OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+        return NULL;
+    }
+
+    return &reg->handle;
+}
+
+static int mca_btl_usnic_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_registration_handle_t *handle)
+{
+    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t *) btl;
+    opal_btl_usnic_reg_t *reg =
+        (opal_btl_usnic_reg_t *)((intptr_t) handle - offsetof (opal_btl_usnic_reg_t, handle));
+
+    module->rcache->rcache_deregister (module->rcache, &reg->base);
+
+    return OPAL_SUCCESS;
+}

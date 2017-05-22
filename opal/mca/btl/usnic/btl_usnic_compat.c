@@ -558,53 +558,6 @@ opal_btl_usnic_prepare_src(
 }
 
 /*
- * BTL 2.0 prepare_dst function (this function does not exist in BTL
- * 3.0).
- */
-mca_btl_base_descriptor_t*
-opal_btl_usnic_prepare_dst(
-    struct mca_btl_base_module_t* base_module,
-    struct mca_btl_base_endpoint_t* endpoint,
-    struct mca_mpool_base_registration_t* registration,
-    struct opal_convertor_t* convertor,
-    uint8_t order,
-    size_t reserve,
-    size_t* size,
-    uint32_t flags)
-{
-    opal_btl_usnic_put_dest_frag_t *pfrag;
-    opal_btl_usnic_module_t *module;
-    void *data_ptr;
-
-    module = (opal_btl_usnic_module_t *)base_module;
-
-    /* allocate a fragment for this */
-    pfrag = (opal_btl_usnic_put_dest_frag_t *)
-        opal_btl_usnic_put_dest_frag_alloc(module);
-    if (NULL == pfrag) {
-        return NULL;
-    }
-
-    /* find start of the data */
-    opal_convertor_get_current_pointer(convertor, (void **) &data_ptr);
-
-    /* make a seg entry pointing at data_ptr */
-    pfrag->uf_remote_seg[0].seg_addr.pval = data_ptr;
-    pfrag->uf_remote_seg[0].seg_len = *size;
-
-    pfrag->uf_base.order       = order;
-    pfrag->uf_base.des_flags   = flags;
-
-#if MSGDEBUG2
-    opal_output(0, "prep_dst size=%d, addr=%p, pfrag=%p\n", (int)*size,
-            data_ptr, (void *)pfrag);
-#endif
-
-    return &pfrag->uf_base;
-}
-
-
-/*
  * BTL 2.0 version of module.btl_put.
  *
  * Emulate an RDMA put.  We'll send the remote address
@@ -621,7 +574,6 @@ int opal_btl_usnic_put(
     frag = (opal_btl_usnic_send_frag_t *)desc;
 
     opal_btl_usnic_compute_sf_size(frag);
-    frag->sf_ack_bytes_left = frag->sf_size;
 
 #if MSGDEBUG2
     opal_output(0, "usnic_put, frag=%p, size=%d\n", (void *)frag,
@@ -649,7 +601,7 @@ int opal_btl_usnic_put(
     frag->sf_base.uf_remote_seg[0].seg_addr.pval =
         desc->USNIC_PUT_REMOTE->seg_addr.pval;
 
-    rc = opal_btl_usnic_finish_put_or_send((opal_btl_usnic_module_t *)btl,
+    rc = opal_btl_usnic_finish_send((opal_btl_usnic_module_t *)btl,
                                            (opal_btl_usnic_endpoint_t *)endpoint,
                                            frag,
                                            /*tag=*/MCA_BTL_NO_ORDER);
@@ -762,65 +714,81 @@ opal_btl_usnic_put(struct mca_btl_base_module_t *base_module,
                    mca_btl_base_rdma_completion_fn_t cbfunc,
                    void *cbcontext, void *cbdata)
 {
-    opal_btl_usnic_send_frag_t *sfrag;
-    opal_btl_usnic_module_t *module = (opal_btl_usnic_module_t*) base_module;
+    int ret;
+    opal_btl_usnic_module_t* module = (opal_btl_usnic_module_t*) base_module;
+    opal_btl_usnic_channel_t *channel = &module->mod_channels[USNIC_DATA_CHANNEL];
+    opal_btl_usnic_put_segment_t *pseg = (opal_btl_usnic_put_segment_t*)
+	    opal_btl_usnic_rdma_segment_alloc(module);
 
-    /* At least for the moment, continue to make a descriptor, like we
-       used to in BTL 2.0 */
-    if (size <= module->max_frag_payload) {
-        /* Small send fragment -- the whole thing fits in one MTU
-           (i.e., a single chunk) */
-        opal_btl_usnic_small_send_frag_t *ssfrag;
-        ssfrag = opal_btl_usnic_small_send_frag_alloc(module);
-        if (OPAL_UNLIKELY(NULL == ssfrag)) {
-            return OPAL_ERR_OUT_OF_RESOURCE;
-        }
+    /* Prepare all the information needed to handle to completion */
+    pseg->seg_base.us_type = OPAL_BTL_USNIC_SEG_PUT;
+    pseg->seg_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
+    pseg->seg_desc.des_cbdata = cbdata;
+    pseg->seg_desc.des_context = cbcontext;
+    pseg->seg_desc.order = order;
+    pseg->seg_desc.des_flags = flags;
+    pseg->seg_len = size;
+    pseg->seg_endpoint = endpoint;
+    pseg->local_address = local_address;
+    pseg->local_handle = local_handle;
 
-        sfrag = &ssfrag->ssf_base;
-    } else {
-        /* Large send fragment -- need more than one MTU (i.e.,
-           multiple chunks) */
-        opal_btl_usnic_large_send_frag_t *lsfrag;
-        lsfrag = opal_btl_usnic_large_send_frag_alloc(module);
-        if (OPAL_UNLIKELY(NULL == lsfrag)) {
-            return OPAL_ERR_OUT_OF_RESOURCE;
-        }
+    /* Remote write the data across the wire */
+    OPAL_THREAD_LOCK(&btl_usnic_lock);
+    ret = fi_write(channel->ep, local_address, size,
+                  local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
+	          remote_address, remote_handle->rkey, pseg);
+    OPAL_THREAD_UNLOCK(&btl_usnic_lock);
 
-        lsfrag->lsf_pack_on_the_fly = true;
+    /* catch the error for now, TODO: handle more appropriately */
+    assert(ret == 0);
 
-        sfrag = &lsfrag->lsf_base;
-    }
+    return OPAL_SUCCESS;
+}
 
-    sfrag->sf_endpoint = endpoint;
-    sfrag->sf_size = size;
-    sfrag->sf_ack_bytes_left = size;
+int
+opal_btl_usnic_get(struct mca_btl_base_module_t *base_module,
+		   struct mca_btl_base_endpoint_t *endpoint,
+		   void* local_address, uint64_t remote_address,
+		   struct mca_btl_base_registration_handle_t *local_handle,
+		   struct mca_btl_base_registration_handle_t *remote_handle,
+		   size_t size, int flags, int order,
+		   mca_btl_base_rdma_completion_fn_t cbfunc,
+		   void *cbcontext, void *cbdata){
 
-    opal_btl_usnic_frag_t *frag;
-    frag = &sfrag->sf_base;
-    frag->uf_local_seg[0].seg_len = size;
-    frag->uf_local_seg[0].seg_addr.pval = local_address;
-    frag->uf_remote_seg[0].seg_len = size;
-    frag->uf_remote_seg[0].seg_addr.pval =
-        (void *)(uintptr_t) remote_address;
+    int ret;
+    opal_btl_usnic_module_t* module = (opal_btl_usnic_module_t*) base_module;
+    opal_btl_usnic_channel_t *channel = &module->mod_channels[USNIC_DATA_CHANNEL];
+    opal_btl_usnic_get_segment_t *gseg = (opal_btl_usnic_get_segment_t*)
+	    opal_btl_usnic_rdma_segment_alloc(module);
 
-    mca_btl_base_descriptor_t *desc;
-    desc = &frag->uf_base;
-    desc->des_segment_count = 1;
-    desc->des_segments = &frag->uf_local_seg[0];
-    /* This is really the wrong cbfunc type, but we'll cast it to
-       the Right type before we use it.  So it'll be ok. */
-    desc->des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
-    desc->des_cbdata = cbdata;
-    desc->des_context = cbcontext;
-    desc->des_flags = flags;
-    desc->order = order;
+    assert(gseg);
 
-    int rc;
-    rc = opal_btl_usnic_finish_put_or_send(module,
-                                           (opal_btl_usnic_endpoint_t *)endpoint,
-                                           sfrag,
-                                           /*tag=*/MCA_BTL_NO_ORDER);
-    return rc;
+    /* Prepare all the information needed to handle to completion */
+    gseg->seg_base.us_type = OPAL_BTL_USNIC_SEG_GET;
+    gseg->seg_desc.des_cbfunc = (mca_btl_base_completion_fn_t) cbfunc;
+    gseg->seg_desc.des_cbdata = cbdata;
+    gseg->seg_desc.des_context = cbcontext;
+    gseg->seg_desc.order = order;
+    gseg->seg_desc.des_flags = flags;
+    gseg->seg_len = size;
+    gseg->seg_endpoint = endpoint;
+    gseg->local_address = local_address;
+    gseg->local_handle = local_handle;
+
+    /* Remote write the data across the wire */
+    OPAL_THREAD_LOCK(&btl_usnic_lock);
+    ret = fi_read(channel->ep, local_address, size,
+                  local_handle->desc, endpoint->endpoint_remote_addrs[USNIC_DATA_CHANNEL],
+	          remote_address, remote_handle->rkey, gseg);
+    OPAL_THREAD_UNLOCK(&btl_usnic_lock);
+    /* catch the error for now, TODO: handle more appropriately */
+    assert(ret == 0);
+
+
+
+
+    return OPAL_SUCCESS;
+
 }
 
 #endif /* BTL_VERSION */

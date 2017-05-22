@@ -244,6 +244,11 @@ typedef struct opal_btl_usnic_component_t {
 
     /* OPAL async progress event base */
     opal_event_base_t *opal_evbase;
+
+    /* provider to request from libfabric */
+    char *libfabric_provider;
+    bool libfabric_use_usnic;
+
 } opal_btl_usnic_component_t;
 
 OPAL_MODULE_DECLSPEC extern opal_btl_usnic_component_t mca_btl_usnic_component;
@@ -282,5 +287,10 @@ void opal_btl_usnic_component_debug(void);
  */
 void opal_btl_usnic_connectivity_map(void);
 
+/**
+ * If fi_getinfo returns some big number, we have to limit ourselves
+ * to some reasonable number. */
+#define MAX_EP_MSG_SIZE 64000
+#define MAX_EP_TINY_MSG_SIZE 768
 END_C_DECLS
 #endif
