@@ -36,6 +36,7 @@
 #include "opal/mca/timer/base/base.h"
 #include "opal/util/output.h"
 #include "opal/runtime/opal_params.h"
+#include "opal/class/opal_task.h"
 
 #define OPAL_PROGRESS_USE_TIMERS (OPAL_TIMER_CYCLE_SUPPORTED || OPAL_TIMER_USEC_SUPPORTED)
 #define OPAL_PROGRESS_ONLY_USEC_NATIVE (OPAL_TIMER_USEC_NATIVE && !OPAL_TIMER_CYCLE_NATIVE)
@@ -102,6 +103,7 @@ static int _opal_progress_unregister (opal_progress_callback_t cb, volatile opal
 int
 opal_progress_init(void)
 {
+    opal_task_init();
     /* reentrant issues */
     opal_atomic_lock_init(&progress_lock, OPAL_ATOMIC_LOCK_UNLOCKED);
 

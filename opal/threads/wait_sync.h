@@ -35,6 +35,7 @@ typedef struct ompi_wait_sync_t {
     struct ompi_wait_sync_t *next;
     struct ompi_wait_sync_t *prev;
     volatile bool signaling;
+    bool done;
 } ompi_wait_sync_t;
 
 #define REQUEST_PENDING        (void*)0L
@@ -72,6 +73,7 @@ typedef struct ompi_wait_sync_t {
         pthread_cond_signal(&sync->condition);        \
         pthread_mutex_unlock(&(sync->lock));          \
         sync->signaling = false;                      \
+        (sync)->done = true;                          \
     }
 
 #define WAIT_SYNC_SIGNALLED(sync){                    \
@@ -95,6 +97,7 @@ static inline int sync_wait_st (ompi_wait_sync_t *sync)
         (sync)->next = NULL;                                    \
         (sync)->prev = NULL;                                    \
         (sync)->status = 0;                                     \
+        (sync)->done = false;                                   \
         (sync)->signaling = (0 != (c));                         \
         if (opal_using_threads()) {                             \
             pthread_cond_init (&(sync)->condition, NULL);       \

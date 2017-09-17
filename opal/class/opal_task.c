@@ -1,6 +1,5 @@
 #include "opal/class/opal_task.h"
 
-
 static void opal_task_construct(opal_task_t*);
 static void opal_task_destruct(opal_task_t*);
 
@@ -8,14 +7,15 @@ enum{
     OPAL_TASK_FLAGS_PERSIST = 0x00000001
 };
 
-OBJ_CLASS_INSTANCE(
+opal_fifo_t opal_task_queue;
+
+OPAL_DECLSPEC OBJ_CLASS_INSTANCE(
     opal_task_t,
     opal_list_item_t,
-    opal_task_construct,
-    opal_task_destruct
+    NULL,
+    NULL
 );
 
-opal_fifo_t *opal_task_queue;
 
 /* Task constructor */
 static void opal_task_construct(opal_task_t *task){
@@ -38,11 +38,11 @@ static void opal_task_destruct(opal_task_t *task){
 void opal_task_init(){
 
     /* Create new task queue */
-    opal_task_queue = OBJ_NEW(opal_fifo_t);
+    OBJ_CONSTRUCT(&opal_task_queue, opal_fifo_t);
 
 }
 
-opal_task_t *opal_task_push(opal_task_t *task, opal_fifo_t *queue){
+opal_task_t *opal_task_push(opal_fifo_t *queue, opal_task_t *task){
     return (opal_task_t*) opal_fifo_push_atomic(queue,(opal_list_item_t*) task);
 }
 
