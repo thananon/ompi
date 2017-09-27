@@ -3769,32 +3769,29 @@ static void handle_wc(mca_btl_openib_device_t* device, const uint32_t cq,
             OPAL_OUTPUT((-1, "Got WC: RDMA_RECV, qp %d, src qp %d, WR ID %" PRIx64,
                          wc->qp_num, wc->src_qp, wc->wr_id));
 
-            opal_task_t *task = OBJ_NEW(opal_task_t);
+            if(opal_using_threads()) {
+                /* create recv processing task and let someone do it. */
+                opal_task_t *task = OBJ_NEW(opal_task_t);
 
-            handle_cb_args_t *cb_args = (handle_cb_args_t*) malloc(sizeof(handle_cb_args_t));
-            cb_args->btl = openib_btl;
-            cb_args->endpoint = endpoint;
-            cb_args->frag = to_recv_frag(frag);
-            cb_args->len = wc->byte_len;
+                handle_cb_args_t *cb_args = (handle_cb_args_t*) malloc(sizeof(handle_cb_args_t));
+                cb_args->btl = openib_btl;
+                cb_args->endpoint = endpoint;
+                cb_args->frag = to_recv_frag(frag);
+                cb_args->len = wc->byte_len;
+                task->func = &btl_openib_handle_incoming_cb;
+                task->args = cb_args;
 
-            task->func = &btl_openib_handle_incoming_cb;
-            task->args = cb_args;
+                opal_task_push(&opal_task_queue, task);
+            } else {
+                /* Process a RECV */
+                if(btl_openib_handle_incoming(openib_btl, endpoint, to_recv_frag(frag),
+                            wc->byte_len) != OPAL_SUCCESS) {
+                    openib_btl->error_cb(&openib_btl->super, MCA_BTL_ERROR_FLAGS_FATAL,
+                                         NULL, NULL);
+                    break;
+                }
+            }
 
-            //opal_fifo_push(&opal_task_queue, task);
-
-            opal_task_push(&opal_task_queue, task);
-            //(ftn)(cb_args);
-            //
-            //(task->func)(task->args);
-
-/**             /* Process a RECV <] */
-            /** if(btl_openib_handle_incoming(openib_btl, endpoint, to_recv_frag(frag), */
-            /**             wc->byte_len) != OPAL_SUCCESS) { */
-            /**     openib_btl->error_cb(&openib_btl->super, MCA_BTL_ERROR_FLAGS_FATAL, */
-            /**                          NULL, NULL); */
-            /**     break; */
-            /** } */
-/**  */
             /* decide if it is time to setup an eager rdma channel */
             if(!endpoint->eager_rdma_local.base.pval && endpoint->use_eager_rdma &&
                     wc->byte_len < mca_btl_openib_component.eager_limit &&
