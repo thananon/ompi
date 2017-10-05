@@ -51,6 +51,8 @@
 #include "opal/mca/common/cuda/common_cuda.h"
 #endif /* OPAL_CUDA_SUPPORT */
 
+int match_collision = 0;
+
 OBJ_CLASS_INSTANCE( mca_pml_ob1_buffer_t,
                     opal_free_list_item_t,
                     NULL,
@@ -376,8 +378,9 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
      * end points) from being processed, and potentially "loosing"
      * the fragment.
      */
-    OB1_MATCHING_LOCK(&comm->matching_lock);
-
+    while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
+        OPAL_THREAD_ADD32(&match_collision, 1);
+    }
     if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
         /* get sequence number of next message that can be processed.
          * If this frag is out of sequence, queue it up in the list
@@ -909,7 +912,10 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
      * end points) from being processed, and potentially "loosing"
      * the fragment.
      */
-    OB1_MATCHING_LOCK(&comm->matching_lock);
+    //OB1_MATCHING_LOCK(&comm->matching_lock);
+    while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
+        OPAL_THREAD_ADD32(&match_collision, 1);
+    }
 
     frag_msg_seq = hdr->hdr_seq;
     next_msg_seq_expected = (uint16_t)proc->expected_sequence;
@@ -1000,8 +1006,10 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
      * any fragments on the frags_cant_match list
      * may now be used to form new matchs
      */
-    if(OPAL_UNLIKELY(NULL != proc->frags_cant_match)) {
-        OB1_MATCHING_LOCK(&comm->matching_lock);
+    if(OPAL_UNLIKELY(opal_list_get_size(&proc->frags_cant_match) > 0)) {
+        while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
+            OPAL_THREAD_ADD32(&match_collision, 1);
+        }
         if((frag = check_cantmatch_for_match(proc))) {
             hdr = &frag->hdr.hdr_match;
             segments = frag->segments;

@@ -303,6 +303,7 @@ int mca_pml_ob1_component_fini(void)
 {
     int rc;
 
+    printf("matching collision = %d\n", match_collision);
     /* Shutdown BML */
     if(OMPI_SUCCESS != (rc = mca_bml.bml_finalize()))
         return rc;
@@ -314,7 +315,7 @@ int mca_pml_ob1_component_fini(void)
     /* return the static receive/send requests to the respective free list and
      * let the free list handle destruction. */
     if( NULL != mca_pml_ob1_recvreq ) {
-        opal_free_list_return (&mca_pml_base_recv_requests, (opal_free_list_item_t *) mca_pml_ob1_recvreq);
+        opal_free_list_return (my_recv_req_list, (opal_free_list_item_t *) mca_pml_ob1_recvreq);
         mca_pml_ob1_recvreq = NULL;
     }
 

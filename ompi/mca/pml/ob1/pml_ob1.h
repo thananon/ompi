@@ -47,6 +47,8 @@ BEGIN_C_DECLS
 /**
  * OB1 PML module
  */
+extern opal_free_list_t mca_pml_ob1_recv_requests[10];
+extern opal_free_list_t mca_pml_ob1_send_requests[10];
 
 struct mca_pml_ob1_t {
     mca_pml_base_module_t super;

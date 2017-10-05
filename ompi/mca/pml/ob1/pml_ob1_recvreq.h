@@ -38,6 +38,8 @@
 
 BEGIN_C_DECLS
 
+extern __thread opal_free_list_t *my_recv_req_list;
+
 struct mca_pml_ob1_recv_request_t {
     mca_pml_base_recv_request_t req_recv;
     opal_ptr_t remote_req_send;
@@ -72,16 +74,27 @@ static inline bool unlock_recv_request(mca_pml_ob1_recv_request_t *recvreq)
         return OPAL_THREAD_ADD_FETCH32(&recvreq->req_lock, -1) == 0;
 }
 
+static inline opal_free_list_t *mca_pml_ob1_get_recv_req_list(void)
+{
+        static uint32_t recv_req_pool_id = 0;
+        opal_free_list_t *ret = &mca_pml_ob1_recv_requests[recv_req_pool_id];
+        OPAL_ATOMIC_ADD32(&recv_req_pool_id, 1);
+        recv_req_pool_id = recv_req_pool_id % 10;
+        return ret;
+}
 /**
  *  Allocate a recv request from the modules free list.
  *
  *  @param rc (OUT)  OMPI_SUCCESS or error status on failure.
  *  @return          Receive request.
  */
-#define MCA_PML_OB1_RECV_REQUEST_ALLOC(recvreq)                    \
-do {                                                               \
+#define MCA_PML_OB1_RECV_REQUEST_ALLOC(recvreq)                       \
+do {                                                                  \
+    if (my_recv_req_list == NULL) {                                   \
+        my_recv_req_list = mca_pml_ob1_get_recv_req_list();           \
+    }                                                                 \
     recvreq = (mca_pml_ob1_recv_request_t *)                          \
-        opal_free_list_get (&mca_pml_base_recv_requests);             \
+        opal_free_list_get (my_recv_req_list);             \
 } while(0)
 
 
@@ -143,7 +156,7 @@ static inline void mca_pml_ob1_recv_request_fini (mca_pml_ob1_recv_request_t *re
 #define MCA_PML_OB1_RECV_REQUEST_RETURN(recvreq)                        \
     {                                                                   \
         mca_pml_ob1_recv_request_fini (recvreq);                        \
-        opal_free_list_return (&mca_pml_base_recv_requests,             \
+        opal_free_list_return (my_recv_req_list,                        \
                                (opal_free_list_item_t*)(recvreq));      \
     }
 

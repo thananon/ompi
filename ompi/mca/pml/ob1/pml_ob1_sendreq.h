@@ -35,6 +35,8 @@
 
 BEGIN_C_DECLS
 
+extern __thread opal_free_list_t *my_send_req_list;
+
 typedef enum {
     MCA_PML_OB1_SEND_PENDING_NONE,
     MCA_PML_OB1_SEND_PENDING_SCHEDULE,
@@ -119,15 +121,27 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
     return sendreq;
 }
 
+static inline opal_free_list_t *mca_pml_ob1_get_my_send_req_list(void)
+{
+    static uint32_t send_req_list_id = 0;
+    opal_free_list_t *ret = &mca_pml_ob1_send_requests[send_req_list_id];
+    OPAL_ATOMIC_ADD32(&send_req_list_id, 1);
+    send_req_list_id %= 10;
+    return ret;
+}
+
 #define MCA_PML_OB1_SEND_REQUEST_ALLOC( comm,                           \
                                         dst,                            \
                                         sendreq)                        \
     {                                                                   \
+        if (my_send_req_list == NULL) {                                 \
+            my_send_req_list = mca_pml_ob1_get_my_send_req_list();      \
+        }                                                               \
         ompi_proc_t *proc = ompi_comm_peer_lookup( comm, dst );         \
                                                                         \
         if( OPAL_LIKELY(NULL != proc) ) {                               \
             sendreq = (mca_pml_ob1_send_request_t*)                     \
-                opal_free_list_wait (&mca_pml_base_send_requests);      \
+                opal_free_list_wait (my_send_req_list);                 \
             sendreq->req_send.req_base.req_proc = proc;                 \
         }                                                               \
     }
@@ -228,7 +242,7 @@ static inline void mca_pml_ob1_send_request_fini (mca_pml_ob1_send_request_t *se
 #define MCA_PML_OB1_SEND_REQUEST_RETURN(sendreq)                        \
     do {                                                                \
         mca_pml_ob1_send_request_fini (sendreq);                        \
-        opal_free_list_return ( &mca_pml_base_send_requests,            \
+        opal_free_list_return ( my_send_req_list,                       \
                                 (opal_free_list_item_t*)sendreq);       \
         sendreq = NULL;  /* for safety */                               \
     } while(0)

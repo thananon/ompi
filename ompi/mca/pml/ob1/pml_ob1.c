@@ -81,6 +81,9 @@ mca_pml_ob1_t mca_pml_ob1 = {
     }
 };
 
+opal_free_list_t mca_pml_ob1_send_requests[10] = {{{0}}};
+opal_free_list_t mca_pml_ob1_recv_requests[10] = {{{0}}};
+
 #if OPAL_CUDA_SUPPORT
 extern void mca_pml_ob1_cuda_add_ipc_support(struct mca_btl_base_module_t* btl,
                                              int32_t flags, ompi_proc_t* errproc,
@@ -162,28 +165,32 @@ int mca_pml_ob1_enable(bool enable)
      * should get ownership for the send and receive requests list, and
      * initialize them with the size of our own requests.
      */
-    opal_free_list_init ( &mca_pml_base_send_requests,
-                          sizeof(mca_pml_ob1_send_request_t) +
-                          sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
-                          opal_cache_line_size,
-                          OBJ_CLASS(mca_pml_ob1_send_request_t),
-                          0,opal_cache_line_size,
-                          mca_pml_ob1.free_list_num,
-                          mca_pml_ob1.free_list_max,
-                          mca_pml_ob1.free_list_inc,
-                          NULL, 0, NULL, NULL, NULL);
+    int i;
+    for(i=0; i < 10; i++) {
+        OBJ_CONSTRUCT(&mca_pml_ob1_send_requests[i], opal_free_list_t);
+        opal_free_list_init ( &mca_pml_ob1_send_requests[i],
+                              sizeof(mca_pml_ob1_send_request_t) +
+                              sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
+                              opal_cache_line_size,
+                              OBJ_CLASS(mca_pml_ob1_send_request_t),
+                              0,opal_cache_line_size,
+                              mca_pml_ob1.free_list_num,
+                              mca_pml_ob1.free_list_max,
+                              mca_pml_ob1.free_list_inc,
+                              NULL, 0, NULL, NULL, NULL);
 
-    opal_free_list_init ( &mca_pml_base_recv_requests,
-                          sizeof(mca_pml_ob1_recv_request_t) +
-                          sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
-                          opal_cache_line_size,
-                          OBJ_CLASS(mca_pml_ob1_recv_request_t),
-                          0,opal_cache_line_size,
-                          mca_pml_ob1.free_list_num,
-                          mca_pml_ob1.free_list_max,
-                          mca_pml_ob1.free_list_inc,
-                          NULL, 0, NULL, NULL, NULL);
-
+        OBJ_CONSTRUCT(&mca_pml_ob1_recv_requests[i], opal_free_list_t);
+        opal_free_list_init ( &mca_pml_ob1_recv_requests[i],
+                              sizeof(mca_pml_ob1_recv_request_t) +
+                              sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
+                              opal_cache_line_size,
+                              OBJ_CLASS(mca_pml_ob1_recv_request_t),
+                              0,opal_cache_line_size,
+                              mca_pml_ob1.free_list_num,
+                              mca_pml_ob1.free_list_max,
+                              mca_pml_ob1.free_list_inc,
+                              NULL, 0, NULL, NULL, NULL);
+    }
     mca_pml_ob1.enabled = true;
     return OMPI_SUCCESS;
 }

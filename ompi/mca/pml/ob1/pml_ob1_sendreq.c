@@ -43,6 +43,8 @@
 OBJ_CLASS_INSTANCE(mca_pml_ob1_send_range_t, opal_free_list_item_t,
         NULL, NULL);
 
+__thread opal_free_list_t *my_send_req_list = NULL;
+
 void mca_pml_ob1_send_request_process_pending(mca_bml_base_btl_t *bml_btl)
 {
     int rc, i, s = opal_list_get_size(&mca_pml_ob1.send_pending);

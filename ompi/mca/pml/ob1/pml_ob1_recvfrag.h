@@ -31,6 +31,8 @@
 
 BEGIN_C_DECLS
 
+extern int match_collision;
+
 struct mca_pml_ob1_buffer_t {
     size_t len;
     void * addr;

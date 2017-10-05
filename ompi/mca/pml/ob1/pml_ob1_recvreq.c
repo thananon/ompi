@@ -48,6 +48,8 @@ int mca_pml_ob1_cuda_need_buffers(mca_pml_ob1_recv_request_t* recvreq,
                                   mca_btl_base_module_t* btl);
 #endif /* OPAL_CUDA_SUPPORT */
 
+__thread opal_free_list_t *my_recv_req_list = NULL;
+
 void mca_pml_ob1_recv_request_process_pending(void)
 {
     mca_pml_ob1_recv_request_t* recvreq;
