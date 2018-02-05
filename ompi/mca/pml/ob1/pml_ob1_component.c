@@ -303,7 +303,6 @@ int mca_pml_ob1_component_fini(void)
 {
     int rc;
 
-    printf("matching collision = %d\n", match_collision);
     /* Shutdown BML */
     if(OMPI_SUCCESS != (rc = mca_bml.bml_finalize()))
         return rc;

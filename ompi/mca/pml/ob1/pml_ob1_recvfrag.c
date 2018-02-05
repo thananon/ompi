@@ -378,9 +378,7 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
      * end points) from being processed, and potentially "loosing"
      * the fragment.
      */
-    while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
-        OPAL_THREAD_ADD32(&match_collision, 1);
-    }
+    OB1_MATCHING_LOCK(&comm->matching_lock);
     if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
         /* get sequence number of next message that can be processed.
          * If this frag is out of sequence, queue it up in the list
@@ -912,10 +910,7 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
      * end points) from being processed, and potentially "loosing"
      * the fragment.
      */
-    //OB1_MATCHING_LOCK(&comm->matching_lock);
-    while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
-        OPAL_THREAD_ADD32(&match_collision, 1);
-    }
+    OB1_MATCHING_LOCK(&comm->matching_lock);
 
     frag_msg_seq = hdr->hdr_seq;
     next_msg_seq_expected = (uint16_t)proc->expected_sequence;
