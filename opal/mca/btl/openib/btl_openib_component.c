@@ -3909,7 +3909,11 @@ static int btl_openib_component_progress(void)
         mca_btl_openib_device_t *device =
             (mca_btl_openib_device_t *) opal_pointer_array_get_item(&mca_btl_openib_component.devices, i);
         if (NULL != device) {
+            if (OPAL_THREAD_TRYLOCK(&device->device_lock)) {
+                continue;
+            }
             count += progress_one_device(device);
+            OPAL_THREAD_UNLOCK(&device->device_lock);
         }
     }
 
