@@ -2846,6 +2846,8 @@ btl_openib_component_init(int *num_btl_modules,
         ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
         ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
         ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
+        ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
+        ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
         if (OPAL_ERR_NOT_SUPPORTED == ret) {
             ++num_devices_intentionally_ignored;
             continue;
