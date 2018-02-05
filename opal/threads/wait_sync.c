@@ -19,9 +19,6 @@ static ompi_wait_sync_t* wait_sync_list = NULL;
 
 #define WAIT_SYNC_PASS_OWNERSHIP(who)                  \
     do {                                               \
-        pthread_mutex_lock( &(who)->lock);             \
-        pthread_cond_signal( &(who)->condition );      \
-        pthread_mutex_unlock( &(who)->lock);           \
     } while(0)
 
 int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
@@ -32,17 +29,6 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
      */
     if(sync->count <= 0)
         return (0 == sync->status) ? OPAL_SUCCESS : OPAL_ERROR;
-
-    /* lock so nobody can signal us during the list updating */
-    pthread_mutex_lock(&sync->lock);
-
-    /* Now that we hold the lock make sure another thread has not already
-     * call cond_signal.
-     */
-    if(sync->count <= 0) {
-        pthread_mutex_unlock(&sync->lock);
-        return (0 == sync->status) ? OPAL_SUCCESS : OPAL_ERROR;
-    }
 
     /* Insert sync on the list of pending synchronization constructs */
     OPAL_THREAD_LOCK(&wait_sync_lock);
@@ -63,24 +49,14 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
      *  - our sync has been triggered.
      */
  check_status:
-    if( sync != wait_sync_list ) {
-        pthread_cond_wait(&sync->condition, &sync->lock);
+    while( sync != wait_sync_list ) {
+        opal_progress();
 
-        /**
-         * At this point either the sync was completed in which case
-         * we should remove it from the wait list, or/and I was
-         * promoted as the progress manager.
-         */
-
-        if( sync->count <= 0 ) {  /* Completed? */
-            pthread_mutex_unlock(&sync->lock);
+        if( sync->count <= 0 ) {
             goto i_am_done;
         }
-        /* either promoted, or spurious wakeup ! */
-        goto check_status;
     }
 
-    pthread_mutex_unlock(&sync->lock);
     while(sync->count > 0) {  /* progress till completion */
         opal_progress();  /* don't progress with the sync lock locked or you'll deadlock */
     }
