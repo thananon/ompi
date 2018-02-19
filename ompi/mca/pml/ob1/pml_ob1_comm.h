@@ -40,7 +40,7 @@ struct mca_pml_ob1_comm_proc_t {
 #else
     int32_t send_sequence; /**< send side sequence number */
 #endif
-    opal_list_t frags_cant_match;  /**< out-of-order fragment queues */
+    struct mca_pml_ob1_recv_frag_t* frags_cant_match;  /**< out-of-order fragment queues */
     opal_list_t specific_receives; /**< queues of unmatched specific receives */
     opal_list_t unexpected_frags;  /**< unexpected fragment queues */
 };
