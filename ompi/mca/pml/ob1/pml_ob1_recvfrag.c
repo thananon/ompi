@@ -1001,9 +1001,9 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
      * any fragments on the frags_cant_match list
      * may now be used to form new matchs
      */
-    if(OPAL_UNLIKELY(opal_list_get_size(&proc->frags_cant_match) > 0)) {
+    if(proc->frags_cant_match) {
         while(OPAL_THREAD_TRYLOCK(&comm->matching_lock)) {
-            OPAL_THREAD_ADD32(&match_collision, 1);
+            OPAL_THREAD_FETCH_ADD32(&match_collision, 1);
         }
         if((frag = check_cantmatch_for_match(proc))) {
             hdr = &frag->hdr.hdr_match;

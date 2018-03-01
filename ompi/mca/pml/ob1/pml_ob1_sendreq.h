@@ -125,7 +125,7 @@ static inline opal_free_list_t *mca_pml_ob1_get_my_send_req_list(void)
 {
     static uint32_t send_req_list_id = 0;
     opal_free_list_t *ret = &mca_pml_ob1_send_requests[send_req_list_id];
-    OPAL_ATOMIC_ADD32(&send_req_list_id, 1);
+    OPAL_ATOMIC_FETCH_ADD32(&send_req_list_id, 1);
     send_req_list_id %= 10;
     return ret;
 }

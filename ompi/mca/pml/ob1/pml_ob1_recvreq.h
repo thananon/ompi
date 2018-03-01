@@ -78,7 +78,7 @@ static inline opal_free_list_t *mca_pml_ob1_get_recv_req_list(void)
 {
         static uint32_t recv_req_pool_id = 0;
         opal_free_list_t *ret = &mca_pml_ob1_recv_requests[recv_req_pool_id];
-        OPAL_ATOMIC_ADD32(&recv_req_pool_id, 1);
+        OPAL_ATOMIC_FETCH_ADD32(&recv_req_pool_id, 1);
         recv_req_pool_id = recv_req_pool_id % 10;
         return ret;
 }
