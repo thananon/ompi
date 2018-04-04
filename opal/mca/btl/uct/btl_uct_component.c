@@ -47,6 +47,28 @@ static uint64_t mca_btl_uct_cap_to_btl_atomic_flag[][2] = {
     {0, },
 };
 
+/* TODO: move to a seperate file. */
+
+static uct_am_callback_t mca_btl_uct_recv_handler(void *args, void *data,
+                                                  long unsigned len, unsigned flags)
+{
+    opal_output(0, "recv_handler: ");
+    return UCS_OK;
+}
+
+static int mca_btl_uct_component_am_handler_register(uct_iface_h iface)
+{
+
+    int ret;
+
+    /* register the recv completion callback. */
+    ret = uct_iface_set_am_handler(iface, UCT_AM_ID_RECV_COMPLETE,
+                                   (uct_am_callback_t)mca_btl_uct_recv_handler,
+                                   NULL, UCT_CB_FLAG_SYNC);
+
+    return OPAL_SUCCESS;
+}
+
 /**
  * @brief Convert UCT capability flags to BTL flags
  *
@@ -59,7 +81,7 @@ static int32_t mca_btl_uct_module_flags (uint64_t cap_flags)
     uint32_t flags = 0;
     for (int i = 0 ; mca_btl_uct_cap_to_btl_flag[i][0] > 0 ; ++i) {
         if (cap_flags & mca_btl_uct_cap_to_btl_flag[i][0]) {
-            flags |= (uint32_t) mca_btl_uct_cap_to_btl_flag[i][1];
+            flags |= MCA_BTL_FLAGS_SEND | (uint32_t) mca_btl_uct_cap_to_btl_flag[i][1];
         }
     }
     return flags;
@@ -118,7 +140,8 @@ static int mca_btl_uct_component_register(void)
 #endif
                                            
     /* for now we want this component to lose to btl/ugni and btl/vader */
-    module->super.btl_exclusivity = MCA_BTL_EXCLUSIVITY_HIGH - 50;
+    module->super.btl_exclusivity = MCA_BTL_EXCLUSIVITY_HIGH;
+    module->super.btl_eager_limit = 1024;
 
     return mca_btl_base_param_register (&mca_btl_uct_component.super.btl_version,
                                         &module->super);
@@ -169,7 +192,7 @@ static int mca_btl_uct_modex_send (void)
         mca_btl_uct_module_t *module = mca_btl_uct_component.modules[i];
 
         modex_size += (3 + 4 + module->uct_iface_attr.device_addr_len + module->uct_iface_attr.iface_addr_len +
-                       strlen (module->uct_tl_full_name) + 1) & ~3;
+                       strlen (module->uct_tl_full_name) + sizeof(uct_ep_h) + 1) & ~3;
     }
 
     modex = alloca (modex_size);
@@ -183,11 +206,15 @@ static int mca_btl_uct_modex_send (void)
 
         /* pack the size */
         *((uint32_t *) modex_data) = (3 + 4 + module->uct_iface_attr.device_addr_len + module->uct_iface_attr.iface_addr_len +
-                                     strlen (module->uct_tl_full_name) + 1) & ~3;
+                                     strlen (module->uct_tl_full_name) + module->uct_iface_attr.ep_addr_len + 1) & ~3;
         modex_data += 4;
 
         strcpy (modex_data, module->uct_tl_full_name);
         modex_data += name_len + 1;
+
+        /* attach the endpoint */
+        uct_ep_get_address(module->uct_endpoint, (uct_ep_addr_t*)modex_data);
+        modex_data += module->uct_iface_attr.ep_addr_len;
 
         /* NTH: only the first context is available. i assume the device addresses of the
          * contexts will be the same but they will have different iface addresses. i also
@@ -331,6 +358,13 @@ static int mca_btl_uct_component_process_uct_tl (const char *md_name, mca_btl_uc
         return rc;
     }
 
+    /* Create uct endpoint: EXPERIMENTAL */
+    ucs_status = uct_ep_create(module->contexts[0].uct_iface, &module->uct_endpoint);
+    if (OPAL_UNLIKELY(UCS_OK != rc)) {
+        mca_btl_uct_finalize (&module->super);
+        return rc;
+    }
+
     /* only need to query one of the interfaces to get the attributes */
     ucs_status = uct_iface_query (module->contexts[0].uct_iface, &module->uct_iface_attr);
     if (UCS_OK != ucs_status) {
@@ -351,6 +385,9 @@ static int mca_btl_uct_component_process_uct_tl (const char *md_name, mca_btl_uc
         /* not really an error. just an unusable transport */
         return OPAL_SUCCESS;
     }
+
+    /* Register the active message handler function. */
+    rc = mca_btl_uct_component_am_handler_register(module->contexts[0].uct_iface);
 
     module->super.btl_flags = mca_btl_uct_module_flags (module->uct_iface_attr.cap.flags);
     module->super.btl_atomic_flags = mca_btl_uct_module_atomic_flags (module->uct_iface_attr.cap.flags);

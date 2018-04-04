@@ -39,6 +39,9 @@ struct mca_btl_base_endpoint_t {
 
     /** mutex to protect this structure */
     opal_mutex_t ep_lock;
+
+    /* send frags */
+    opal_free_list_t send_frags;
 };
 
 typedef struct mca_btl_base_endpoint_t mca_btl_base_endpoint_t;

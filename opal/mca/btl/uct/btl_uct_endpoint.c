@@ -11,15 +11,36 @@
 
 #include "btl_uct.h"
 #include "btl_uct_endpoint.h"
+#include "btl_uct_frag.h"
 #include "opal/util/proc.h"
 
 static void mca_btl_uct_endpoint_construct (mca_btl_uct_endpoint_t *endpoint)
 {
+    int rc;
     for (int i = 0 ; i < MCA_BTL_UCT_MAX_WORKERS ; ++i) {
         endpoint->uct_eps[i] = NULL;
     }
 
     OBJ_CONSTRUCT(&endpoint->ep_lock, opal_mutex_t);
+
+    OBJ_CONSTRUCT(&endpoint->send_frags, opal_free_list_t);
+    rc = opal_free_list_init(&endpoint->send_frags,
+                             sizeof(mca_btl_uct_frag_t) +
+                             1024,
+                             opal_cache_line_size,
+                             OBJ_CLASS(mca_btl_uct_frag_t),
+                             0,  /* payload size */
+                             opal_cache_line_size,     /* alignment */
+                             64,    /* number of item to start */
+                             -1,    /* ? */
+                             16,    /* number of item per expansion */
+                             NULL,  /* the mpool */
+                             0,     /* mpool flags */
+                             NULL,  /* rcache? */
+                             NULL,  /* item init */
+                             NULL); /*item init context */
+    assert(OPAL_SUCCESS == rc);
+
 }
 
 static void mca_btl_uct_endpoint_destruct (mca_btl_uct_endpoint_t *endpoint)
@@ -32,6 +53,7 @@ static void mca_btl_uct_endpoint_destruct (mca_btl_uct_endpoint_t *endpoint)
     }
 
     OBJ_DESTRUCT(&endpoint->ep_lock);
+    OBJ_DESTRUCT(&endpoint->send_frags);
 }
 
 OBJ_CLASS_INSTANCE(mca_btl_uct_endpoint_t, opal_list_item_t,
@@ -40,12 +62,12 @@ OBJ_CLASS_INSTANCE(mca_btl_uct_endpoint_t, opal_list_item_t,
 
 mca_btl_base_endpoint_t *mca_btl_uct_endpoint_create (opal_proc_t *proc)
 {
+    /* allocate btl_uct endpoint. */
     mca_btl_uct_endpoint_t *endpoint = OBJ_NEW(mca_btl_uct_endpoint_t);
 
     if (OPAL_UNLIKELY(NULL == endpoint)) {
         return NULL;
     }
-
     endpoint->ep_proc = proc;
 
     return (mca_btl_base_endpoint_t *) endpoint;
@@ -57,6 +79,7 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
     uct_iface_addr_t *iface_addr;
     mca_btl_uct_modex_t *modex;
     ucs_status_t ucs_status;
+    uct_ep_addr_t *peer_uct_ep_addr;
     uint8_t *modex_data;
     size_t msg_size;
     int rc;
@@ -84,9 +107,11 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
             uint32_t modex_size = *((uint32_t *) modex_data);
 
             if (0 == strcmp (modex_data + 4, module->uct_tl_full_name)) {
+                peer_uct_ep_addr = (uct_ep_addr_t*) (modex_data + 4 + strlen(module->uct_tl_full_name) + 1);
                 /* found it. locate the interface and device addresses. for now these are from
                  * the first context on the remote process. that is probably ok. */
-                iface_addr = (uct_iface_addr_t *) (modex_data + 4 + strlen (module->uct_tl_full_name) + 1);
+                iface_addr = (uct_iface_addr_t *) (modex_data + 4 + strlen (module->uct_tl_full_name) + 1
+                                                  + module->uct_iface_attr.ep_addr_len);
                 device_addr = (uct_device_addr_t *) ((uintptr_t) iface_addr + module->uct_iface_attr.iface_addr_len);
                 break;
             }
@@ -99,8 +124,12 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
         }
 
         /* try to connect the uct endpoint */
-        ucs_status = uct_ep_create_connected (module->contexts[context_id].uct_iface, device_addr, iface_addr,
-                                              endpoint->uct_eps + context_id);
+        /** ucs_status = uct_ep_create_connected (module->contexts[context_id].uct_iface, device_addr, iface_addr, */
+        /**                                       endpoint->uct_eps + context_id); */
+        ucs_status = uct_ep_connect_to_ep(module->uct_endpoint, device_addr, peer_uct_ep_addr);
+        assert(ucs_status == UCS_OK);
+        BTL_VERBOSE(("endpoint connected"));
+
         rc = UCS_OK == ucs_status ? OPAL_SUCCESS : OPAL_ERROR;
     } while (0);
 

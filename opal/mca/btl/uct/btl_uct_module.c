@@ -29,6 +29,7 @@
 
 #include "btl_uct.h"
 #include "btl_uct_endpoint.h"
+#include "btl_uct_frag.h"
 
 static int mca_btl_uct_reg_mem (void *reg_data, void *base, size_t size, mca_rcache_base_registration_t *reg);
 static int mca_btl_uct_dereg_mem (void *reg_data, mca_rcache_base_registration_t *reg);
@@ -48,7 +49,7 @@ static int mca_btl_uct_add_procs (mca_btl_base_module_t *btl,
          * performance benefits to using rcache/grdma instead of assuming UCT will do the right
          * thing. */
         (void) asprintf (&tmp, "uct.%s", uct_btl->uct_tl_full_name);
-        
+
         rcache_resources.cache_name     = tmp;
         rcache_resources.reg_data       = (void *) uct_btl;
         rcache_resources.sizeof_reg     = sizeof (mca_btl_uct_reg_t) + btl->btl_registration_handle_size;
@@ -153,6 +154,46 @@ static int mca_btl_uct_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_
     (void) uct_module->rcache->rcache_deregister (uct_module->rcache, &reg->base);
 
     return OPAL_SUCCESS;
+}
+
+static mca_btl_base_descriptor_t*
+mca_btl_uct_alloc(struct mca_btl_base_module_t* btl,
+                  struct mca_btl_base_endpoint_t* endpoint,
+                  uint8_t order,
+                  size_t size,
+                  uint32_t flags)
+{
+
+    mca_btl_uct_frag_t *frag;
+    mca_btl_uct_module_t *module = (mca_btl_uct_module_t*)btl;
+
+    /* allocate proper frag here. */
+    frag = (mca_btl_uct_frag_t*)opal_free_list_get(&endpoint->send_frags);
+    frag->my_list = &endpoint->send_frags;
+
+    frag->segment.seg_len = size;
+    frag->segment.seg_addr.pval = frag+1;
+
+    frag->base_desc.des_segments = &frag->segment;
+    frag->base_desc.des_segment_count = 1;
+    frag->base_desc.des_flags = flags;
+    frag->base_desc.order = MCA_BTL_NO_ORDER;
+
+    return (mca_btl_base_descriptor_t*)frag;
+}
+
+static int mca_btl_uct_free (struct mca_btl_base_module_t* btl,
+                             mca_btl_base_descriptor_t* desc)
+{
+
+    /* Free the memory somehow. */
+    mca_btl_uct_frag_t *frag = (mca_btl_uct_frag_t*)desc;
+
+    free(frag->base_desc.des_segments);
+    opal_free_list_return(frag->my_list, (opal_free_list_item_t*)frag);
+
+    return OPAL_SUCCESS;
+
 }
 
 static int mca_btl_uct_reg_mem (void *reg_data, void *base, size_t size, mca_rcache_base_registration_t *reg)
@@ -265,11 +306,19 @@ mca_btl_uct_module_t mca_btl_uct_module_template = {
         .btl_atomic_op      = mca_btl_uct_aop,
         .btl_atomic_fop     = mca_btl_uct_afop,
         .btl_atomic_cswap   = mca_btl_uct_acswap,
-        .btl_flush          = mca_btl_uct_flush,
+        //.btl_flush          = mca_btl_uct_flush,
+        .btl_alloc          = mca_btl_uct_alloc,
+        .btl_free           = mca_btl_uct_free,
+        .btl_send           = mca_btl_uct_send,
 
         /* set the default flags for this btl. uct provides us with rdma and both
          * fetching and non-fetching atomics (though limited to add and cswap) */
-        .btl_flags          = MCA_BTL_FLAGS_RDMA | MCA_BTL_FLAGS_ATOMIC_FOPS | MCA_BTL_FLAGS_ATOMIC_OPS,
+        .btl_flags          = MCA_BTL_FLAGS_RDMA |
+                              MCA_BTL_FLAGS_ATOMIC_FOPS |
+                              MCA_BTL_FLAGS_ATOMIC_OPS |
+                              MCA_BTL_FLAGS_SEND |
+                              MCA_BTL_FLAGS_SEND_INPLACE,
+
         .btl_atomic_flags   = MCA_BTL_ATOMIC_SUPPORTS_ADD | MCA_BTL_ATOMIC_SUPPORTS_CSWAP |
                               MCA_BTL_ATOMIC_SUPPORTS_SWAP | MCA_BTL_ATOMIC_SUPPORTS_32BIT,
 

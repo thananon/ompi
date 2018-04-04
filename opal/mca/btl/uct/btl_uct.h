@@ -46,6 +46,10 @@ BEGIN_C_DECLS
 #define MCA_BTL_UCT_MAX_MODULES 16
 #define MCA_BTL_UCT_MAX_WORKERS 64
 
+enum mca_btl_uct_am_id {
+    UCT_AM_ID_RECV_COMPLETE
+};
+
 struct mca_btl_uct_modex_t {
     int32_t module_count;
     uint8_t data[];
@@ -114,6 +118,9 @@ struct mca_btl_uct_module_t {
 
     /** UCT transport layer configuration */
     uct_iface_config_t *uct_tl_config;
+
+    /** uct endpoint: experimental **/
+    uct_ep_h uct_endpoint;
 };
 typedef struct mca_btl_uct_module_t mca_btl_uct_module_t;
 
@@ -163,6 +170,11 @@ struct mca_btl_uct_reg_t {
 typedef struct mca_btl_uct_reg_t mca_btl_uct_reg_t;
 
 OBJ_CLASS_DECLARATION(mca_btl_uct_reg_t);
+
+int mca_btl_uct_send( struct mca_btl_base_module_t* btl,
+                      struct mca_btl_base_endpoint_t* endpoint,
+                      struct mca_btl_base_descriptor_t* descriptor,
+                      mca_btl_base_tag_t tag );
 
 #define MCA_BTL_UCT_REG_REMOTE_TO_LOCAL(reg) ((mca_btl_uct_reg_t *)((intptr_t) (reg) - offsetof (mca_btl_uct_reg_t, handle)))
 

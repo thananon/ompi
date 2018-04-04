@@ -26,13 +26,16 @@ amca_paramdir = $(AMCA_PARAM_SETS_DIR)
 
 sources = \
     btl_uct.h \
+	btl_uct.c \
     btl_uct_module.c \
     btl_uct_component.c \
     btl_uct_rdma.h \
     btl_uct_rdma.c \
     btl_uct_endpoint.h \
     btl_uct_endpoint.c \
-    btl_uct_amo.c
+    btl_uct_amo.c  \
+	btl_uct_frag.h \
+	btl_uct_frag.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
