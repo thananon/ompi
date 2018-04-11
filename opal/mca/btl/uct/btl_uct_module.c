@@ -189,7 +189,7 @@ static int mca_btl_uct_free (struct mca_btl_base_module_t* btl,
     /* Free the memory somehow. */
     mca_btl_uct_frag_t *frag = (mca_btl_uct_frag_t*)desc;
 
-    free(frag->base_desc.des_segments);
+    //free(frag->base_desc.des_segments);
     opal_free_list_return(frag->my_list, (opal_free_list_item_t*)frag);
 
     return OPAL_SUCCESS;
@@ -314,13 +314,13 @@ mca_btl_uct_module_t mca_btl_uct_module_template = {
         /* set the default flags for this btl. uct provides us with rdma and both
          * fetching and non-fetching atomics (though limited to add and cswap) */
         .btl_flags          = MCA_BTL_FLAGS_RDMA |
-                              MCA_BTL_FLAGS_ATOMIC_FOPS |
-                              MCA_BTL_FLAGS_ATOMIC_OPS |
-                              MCA_BTL_FLAGS_SEND |
-                              MCA_BTL_FLAGS_SEND_INPLACE,
+                              /** MCA_BTL_FLAGS_ATOMIC_FOPS | */
+                              /** MCA_BTL_FLAGS_ATOMIC_OPS | */
+                              MCA_BTL_FLAGS_SEND,
+                              /** MCA_BTL_FLAGS_SEND_INPLACE, */
 
-        .btl_atomic_flags   = MCA_BTL_ATOMIC_SUPPORTS_ADD | MCA_BTL_ATOMIC_SUPPORTS_CSWAP |
-                              MCA_BTL_ATOMIC_SUPPORTS_SWAP | MCA_BTL_ATOMIC_SUPPORTS_32BIT,
+        /** .btl_atomic_flags   = MCA_BTL_ATOMIC_SUPPORTS_ADD | MCA_BTL_ATOMIC_SUPPORTS_CSWAP | */
+        /**                       MCA_BTL_ATOMIC_SUPPORTS_SWAP | MCA_BTL_ATOMIC_SUPPORTS_32BIT, */
 
         /* set the default limits on put and get */
         .btl_put_limit      = 1 << 23,

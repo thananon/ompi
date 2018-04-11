@@ -60,6 +60,12 @@ OBJ_CLASS_INSTANCE(mca_btl_uct_endpoint_t, opal_list_item_t,
                    mca_btl_uct_endpoint_construct,
                    mca_btl_uct_endpoint_destruct);
 
+ucs_status_t temp(void *arg) {
+
+    opal_output(0, "hello");
+    return UCS_OK;
+}
+
 mca_btl_base_endpoint_t *mca_btl_uct_endpoint_create (opal_proc_t *proc)
 {
     /* allocate btl_uct endpoint. */
@@ -98,8 +104,8 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
             break;
         }
 
-        BTL_VERBOSE(("received modex of size %lu for proc %s", (unsigned long) msg_size,
-                     OPAL_NAME_PRINT(endpoint->ep_proc->proc_name)));
+        BTL_VERBOSE(("received modex of size %lu for proc %s %s", (unsigned long) msg_size,
+                     OPAL_NAME_PRINT(endpoint->ep_proc->proc_name), endpoint->ep_proc->proc_hostname));
         modex_data = modex->data;
 
         /* look for matching transport in the modex */
@@ -107,11 +113,10 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
             uint32_t modex_size = *((uint32_t *) modex_data);
 
             if (0 == strcmp (modex_data + 4, module->uct_tl_full_name)) {
-                peer_uct_ep_addr = (uct_ep_addr_t*) (modex_data + 4 + strlen(module->uct_tl_full_name) + 1);
+               /** peer_uct_ep_addr = (uct_ep_addr_t*) (modex_data + 4 + strlen(module->uct_tl_full_name) + 1); */
                 /* found it. locate the interface and device addresses. for now these are from
                  * the first context on the remote process. that is probably ok. */
-                iface_addr = (uct_iface_addr_t *) (modex_data + 4 + strlen (module->uct_tl_full_name) + 1
-                                                  + module->uct_iface_attr.ep_addr_len);
+                iface_addr = (uct_iface_addr_t *) (modex_data + 4 + strlen (module->uct_tl_full_name) + 1);
                 device_addr = (uct_device_addr_t *) ((uintptr_t) iface_addr + module->uct_iface_attr.iface_addr_len);
                 break;
             }
@@ -123,12 +128,14 @@ int mca_btl_uct_endpoint_connect (mca_btl_uct_module_t *module, mca_btl_uct_endp
             return OPAL_ERR_UNREACH;
         }
 
+
         /* try to connect the uct endpoint */
-        /** ucs_status = uct_ep_create_connected (module->contexts[context_id].uct_iface, device_addr, iface_addr, */
-        /**                                       endpoint->uct_eps + context_id); */
-        ucs_status = uct_ep_connect_to_ep(module->uct_endpoint, device_addr, peer_uct_ep_addr);
+        ucs_status = uct_ep_create_connected (module->contexts[context_id].uct_iface, device_addr, iface_addr,
+                                              endpoint->uct_eps + context_id);
+        /** ucs_status = uct_ep_connect_to_ep(module->uct_endpoint, device_addr, peer_uct_ep_addr); */
         assert(ucs_status == UCS_OK);
-        BTL_VERBOSE(("endpoint connected"));
+        BTL_VERBOSE(("endpoint connected to %s device_addr:%s iface_addr:%s", module->uct_tl_full_name, device_addr, iface_addr));
+
 
         rc = UCS_OK == ucs_status ? OPAL_SUCCESS : OPAL_ERROR;
     } while (0);
