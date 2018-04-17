@@ -171,13 +171,15 @@ mca_btl_uct_alloc(struct mca_btl_base_module_t* btl,
     frag = (mca_btl_uct_frag_t*)opal_free_list_get(&endpoint->send_frags);
     frag->my_list = &endpoint->send_frags;
 
-    frag->segment.seg_len = size;
+    frag->segment.seg_len = size + sizeof(mca_btl_uct_header_t);
+
+    /* the pml-usable payload is outside of frag_t */
     frag->segment.seg_addr.pval = frag+1;
 
-    frag->base_desc.des_segments = &frag->segment;
-    frag->base_desc.des_segment_count = 1;
-    frag->base_desc.des_flags = flags;
-    frag->base_desc.order = MCA_BTL_NO_ORDER;
+    frag->base.des_segments = &frag->segment;
+    frag->base.des_segment_count = 1;
+    frag->base.des_flags = flags | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP | MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
+    frag->base.order = MCA_BTL_NO_ORDER;
 
     return (mca_btl_base_descriptor_t*)frag;
 }
@@ -188,8 +190,6 @@ static int mca_btl_uct_free (struct mca_btl_base_module_t* btl,
 
     /* Free the memory somehow. */
     mca_btl_uct_frag_t *frag = (mca_btl_uct_frag_t*)desc;
-
-    //free(frag->base_desc.des_segments);
     opal_free_list_return(frag->my_list, (opal_free_list_item_t*)frag);
 
     return OPAL_SUCCESS;

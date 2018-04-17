@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "btl_uct.h"
+#include "btl_uct_frag.h"
 
 static uint64_t mca_btl_uct_cap_to_btl_flag[][2] = {
     {UCT_IFACE_FLAG_PUT_ZCOPY, MCA_BTL_FLAGS_PUT},
@@ -49,23 +50,49 @@ static uint64_t mca_btl_uct_cap_to_btl_atomic_flag[][2] = {
 
 /* TODO: move to a seperate file. */
 
-uct_am_callback_t mca_btl_uct_recv_handler(void *args, void *data,
-                                                  long unsigned len, unsigned flags)
+uct_am_callback_t mca_btl_uct_recv_handler(mca_btl_uct_module_t *module, void *data,
+                                           size_t len, unsigned flags)
 {
-    opal_output(0, "recv_handler: ");
-    assert(0);
-    return UCS_OK;
+    /** BTL_VERBOSE(("recv_handler: recv %d byte of data", len)); */
+
+    mca_btl_uct_frag_t *frag = (mca_btl_uct_frag_t*) malloc(sizeof(mca_btl_uct_frag_t) + 1024);
+    /** mca_btl_uct_frag_t *frag = (mca_btl_uct_frag_t*) opal_free_list_get(&module->recv_frag_list); */
+
+    frag->segment.seg_len = len - sizeof(mca_btl_uct_header_t);
+    frag->segment.seg_addr.pval = frag+1;
+
+    frag->base.des_segments = &frag->segment;
+    frag->base.des_segment_count = 1;
+    frag->base.des_flags = 0;
+    frag->base.order = MCA_BTL_NO_ORDER;
+
+    /* copy data to our buffer */
+    memcpy(&frag->hdr,data,len);
+
+    /* hand it off to PML */
+    mca_btl_active_message_callback_t* reg;
+    reg = mca_btl_base_active_message_trigger + frag->hdr.base.tag;
+    reg->cbfunc(&module->super, frag->hdr.base.tag, frag, reg->cbdata);
+
+    //opal_free_list_return(&module->recv_frag_list, frag);
+    free(frag);
+
+
+    /** assert(0); */
 }
 
-static int mca_btl_uct_component_am_handler_register(uct_iface_h iface)
+static int mca_btl_uct_component_am_handler_register(mca_btl_uct_module_t *module,
+                                                     int context_id)
 {
 
     ucs_status_t ucs_status;
 
     /* register the recv completion callback. */
-    ucs_status = uct_iface_set_am_handler(iface, 0,
-                                   (uct_am_callback_t)mca_btl_uct_recv_handler,
-                                   (void*)1, UCT_CB_FLAG_SYNC);
+    ucs_status = uct_iface_set_am_handler(module->contexts[context_id].uct_iface,
+                                          UCT_AM_ID_RECV_COMPLETE,
+                                          (uct_am_callback_t) mca_btl_uct_recv_handler,
+                                          (void*) &module,
+                                          UCT_CB_FLAG_ASYNC);
     assert(UCS_OK == ucs_status);
 
     return OPAL_SUCCESS;
@@ -370,7 +397,7 @@ static int mca_btl_uct_component_process_uct_tl (const char *md_name, mca_btl_uc
 
     for (int context_id = 0 ; context_id < module->uct_worker_count ; ++context_id) {
         /* Register the active message handler function. */
-        rc = mca_btl_uct_component_am_handler_register(module->contexts[context_id].uct_iface);
+        rc = mca_btl_uct_component_am_handler_register(module, context_id);
     }
 
     /* UCT bandwidth is in bytes/sec, BTL is in MB/sec */
@@ -386,6 +413,24 @@ static int mca_btl_uct_component_process_uct_tl (const char *md_name, mca_btl_uc
         /* not really an error. just an unusable transport */
         return OPAL_SUCCESS;
     }
+
+    OBJ_CONSTRUCT(&module->recv_frag_list, opal_free_list_t);
+    rc = opal_free_list_init(&module->recv_frag_list,
+                             sizeof(mca_btl_uct_frag_t) +
+                             1024,
+                             opal_cache_line_size,
+                             OBJ_CLASS(mca_btl_uct_frag_t),
+                             0,
+                             opal_cache_line_size,
+                             64,
+                             -1,
+                             16,
+                             NULL,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
+    assert(OPAL_SUCCESS == rc);
 
 
     module->super.btl_flags = mca_btl_uct_module_flags (module->uct_iface_attr.cap.flags);

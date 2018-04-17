@@ -121,6 +121,8 @@ struct mca_btl_uct_module_t {
 
     /** uct endpoint: experimental **/
     uct_ep_h uct_endpoint;
+
+    opal_free_list_t recv_frag_list;
 };
 typedef struct mca_btl_uct_module_t mca_btl_uct_module_t;
 
