@@ -41,6 +41,7 @@
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/memchecker.h"
 
+__thread opal_free_list_t *my_send_req_list = NULL;
 
 OBJ_CLASS_INSTANCE(mca_pml_ob1_send_range_t, opal_free_list_item_t,
         NULL, NULL);

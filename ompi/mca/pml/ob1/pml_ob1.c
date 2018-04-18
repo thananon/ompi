@@ -92,6 +92,8 @@ extern void mca_pml_ob1_cuda_add_ipc_support(struct mca_btl_base_module_t* btl,
 void mca_pml_ob1_error_handler( struct mca_btl_base_module_t* btl,
                                 int32_t flags, opal_proc_t* errproc,
                                 char* btlinfo );
+opal_free_list_t ob1_recv_requests[10];
+opal_free_list_t ob1_send_requests[10];
 
 int mca_pml_ob1_enable(bool enable)
 {
@@ -164,7 +166,9 @@ int mca_pml_ob1_enable(bool enable)
      * should get ownership for the send and receive requests list, and
      * initialize them with the size of our own requests.
      */
-    opal_free_list_init ( &mca_pml_base_send_requests,
+    for(int i=0;i<10;i++) {
+    OBJ_CONSTRUCT(&ob1_send_requests[i], opal_free_list_t);
+    opal_free_list_init ( &ob1_send_requests[i],
                           sizeof(mca_pml_ob1_send_request_t) +
                           sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
                           opal_cache_line_size,
@@ -175,7 +179,8 @@ int mca_pml_ob1_enable(bool enable)
                           mca_pml_ob1.free_list_inc,
                           NULL, 0, NULL, NULL, NULL);
 
-    opal_free_list_init ( &mca_pml_base_recv_requests,
+    OBJ_CONSTRUCT(&ob1_recv_requests[i], opal_free_list_t);
+    opal_free_list_init ( &ob1_recv_requests[i],
                           sizeof(mca_pml_ob1_recv_request_t) +
                           sizeof(mca_pml_ob1_com_btl_t[mca_pml_ob1.max_rdma_per_request]),
                           opal_cache_line_size,
@@ -185,7 +190,7 @@ int mca_pml_ob1_enable(bool enable)
                           mca_pml_ob1.free_list_max,
                           mca_pml_ob1.free_list_inc,
                           NULL, 0, NULL, NULL, NULL);
-
+    }
     mca_pml_ob1.enabled = true;
     return OMPI_SUCCESS;
 }

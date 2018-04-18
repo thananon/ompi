@@ -120,15 +120,22 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
     return sendreq;
 }
 
+extern __thread opal_free_list_t *my_send_req_list;
+static int send_req_pool_id = 0;
 #define MCA_PML_OB1_SEND_REQUEST_ALLOC( comm,                           \
                                         dst,                            \
                                         sendreq)                        \
     {                                                                   \
         ompi_proc_t *proc = ompi_comm_peer_lookup( comm, dst );         \
                                                                         \
+        if (NULL==my_send_req_list) {                                   \
+            OPAL_THREAD_LOCK(&list_lock);                               \
+            my_send_req_list = &ob1_send_requests[++send_req_pool_id%10];       \
+            OPAL_THREAD_UNLOCK(&list_lock);                             \
+        }                                                               \
         if( OPAL_LIKELY(NULL != proc) ) {                               \
             sendreq = (mca_pml_ob1_send_request_t*)                     \
-                opal_free_list_wait (&mca_pml_base_send_requests);      \
+                opal_free_list_wait (my_send_req_list);   \
             sendreq->req_send.req_base.req_proc = proc;                 \
         }                                                               \
     }
@@ -229,7 +236,7 @@ static inline void mca_pml_ob1_send_request_fini (mca_pml_ob1_send_request_t *se
 #define MCA_PML_OB1_SEND_REQUEST_RETURN(sendreq)                        \
     do {                                                                \
         mca_pml_ob1_send_request_fini (sendreq);                        \
-        opal_free_list_return ( &mca_pml_base_send_requests,            \
+        opal_free_list_return ( my_send_req_list,           \
                                 (opal_free_list_item_t*)sendreq);       \
         sendreq = NULL;  /* for safety */                               \
     } while(0)

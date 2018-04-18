@@ -336,12 +336,12 @@ int mca_pml_ob1_component_fini(void)
     /* return the static receive/send requests to the respective free list and
      * let the free list handle destruction. */
     if( NULL != mca_pml_ob1_recvreq ) {
-        opal_free_list_return (&mca_pml_base_recv_requests, (opal_free_list_item_t *) mca_pml_ob1_recvreq);
+        opal_free_list_return (&ob1_recv_requests[0], (opal_free_list_item_t *) mca_pml_ob1_recvreq);
         mca_pml_ob1_recvreq = NULL;
     }
 
     if( NULL != mca_pml_ob1_sendreq ) {
-        opal_free_list_return (&mca_pml_base_send_requests, (opal_free_list_item_t *) mca_pml_ob1_sendreq);
+        opal_free_list_return (&ob1_send_requests[0], (opal_free_list_item_t *) mca_pml_ob1_sendreq);
         mca_pml_ob1_sendreq = NULL;
     }
 

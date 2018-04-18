@@ -44,6 +44,9 @@
 
 BEGIN_C_DECLS
 
+extern opal_free_list_t ob1_send_requests[10];
+extern opal_free_list_t ob1_recv_requests[10];
+
 /**
  * OB1 PML module
  */

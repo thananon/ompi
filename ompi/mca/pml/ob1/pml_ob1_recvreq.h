@@ -72,6 +72,10 @@ static inline bool unlock_recv_request(mca_pml_ob1_recv_request_t *recvreq)
         return OPAL_THREAD_ADD_FETCH32(&recvreq->req_lock, -1) == 0;
 }
 
+static int req_pool_id = 0;
+extern __thread opal_free_list_t *my_recv_req_list;
+extern opal_mutex_t list_lock;
+
 /**
  *  Allocate a recv request from the modules free list.
  *
@@ -80,8 +84,13 @@ static inline bool unlock_recv_request(mca_pml_ob1_recv_request_t *recvreq)
  */
 #define MCA_PML_OB1_RECV_REQUEST_ALLOC(recvreq)                    \
 do {                                                               \
+    if (my_recv_req_list == NULL){                                  \
+        OPAL_THREAD_LOCK(&list_lock);                               \
+        my_recv_req_list = &ob1_recv_requests[++req_pool_id%10];    \
+        OPAL_THREAD_UNLOCK(&list_lock);                             \
+    }                                                               \
     recvreq = (mca_pml_ob1_recv_request_t *)                          \
-        opal_free_list_get (&mca_pml_base_recv_requests);             \
+        opal_free_list_get (my_recv_req_list);             \
 } while(0)
 
 
@@ -143,7 +152,7 @@ static inline void mca_pml_ob1_recv_request_fini (mca_pml_ob1_recv_request_t *re
 #define MCA_PML_OB1_RECV_REQUEST_RETURN(recvreq)                        \
     {                                                                   \
         mca_pml_ob1_recv_request_fini (recvreq);                        \
-        opal_free_list_return (&mca_pml_base_recv_requests,             \
+        opal_free_list_return (my_recv_req_list,             \
                                (opal_free_list_item_t*)(recvreq));      \
     }
 
