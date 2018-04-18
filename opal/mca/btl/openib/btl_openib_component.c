@@ -3250,7 +3250,7 @@ void btl_openib_handle_incoming_cb(void *c_args)
     credits = hdr->credits;
 
     if(hdr->cm_seen)
-         OPAL_THREAD_ADD32(&ep->qps[cqp].u.pp_qp.cm_sent, -hdr->cm_seen);
+         OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.cm_sent, -hdr->cm_seen);
 
     /* Now return fragment. Don't touch hdr after this point! */
     if(MCA_BTL_OPENIB_RDMA_FRAG(frag)) {
@@ -3262,7 +3262,7 @@ void btl_openib_handle_incoming_cb(void *c_args)
             tf = MCA_BTL_OPENIB_GET_LOCAL_RDMA_FRAG(ep, erl->tail);
             if(MCA_BTL_OPENIB_RDMA_FRAG_LOCAL(tf))
                 break;
-            OPAL_THREAD_ADD32(&erl->credits, 1);
+            OPAL_THREAD_ADD_FETCH32(&erl->credits, 1);
             MCA_BTL_OPENIB_RDMA_NEXT_INDEX(erl->tail);
         }
         OPAL_THREAD_UNLOCK(&erl->lock);
@@ -3280,14 +3280,14 @@ void btl_openib_handle_incoming_cb(void *c_args)
             MCA_BTL_IB_FRAG_RETURN(frag);
             if (BTL_OPENIB_QP_TYPE_PP(rqp)) {
                 if (OPAL_UNLIKELY(is_credit_msg)) {
-                    OPAL_THREAD_ADD32(&ep->qps[cqp].u.pp_qp.cm_received, 1);
+                    OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.cm_received, 1);
                 } else {
-                    OPAL_THREAD_ADD32(&ep->qps[rqp].u.pp_qp.rd_posted, -1);
+                    OPAL_THREAD_ADD_FETCH32(&ep->qps[rqp].u.pp_qp.rd_posted, -1);
                 }
                 mca_btl_openib_endpoint_post_rr(ep, cqp);
             } else {
                 mca_btl_openib_module_t *btl = ep->endpoint_btl;
-                OPAL_THREAD_ADD32(&btl->qps[rqp].u.srq_qp.rd_posted, -1);
+                OPAL_THREAD_ADD_FETCH32(&btl->qps[rqp].u.srq_qp.rd_posted, -1);
                 mca_btl_openib_post_srr(btl, rqp);
             }
         }
@@ -3298,10 +3298,10 @@ void btl_openib_handle_incoming_cb(void *c_args)
     /* If we got any credits (RDMA or send), then try to progress all
        the no_credits_pending_frags lists */
     if (rcredits > 0) {
-        OPAL_THREAD_ADD32(&ep->eager_rdma_remote.tokens, rcredits);
+        OPAL_THREAD_ADD_FETCH32(&ep->eager_rdma_remote.tokens, rcredits);
     }
     if (credits > 0) {
-        OPAL_THREAD_ADD32(&ep->qps[cqp].u.pp_qp.sd_credits, credits);
+        OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.sd_credits, credits);
     }
     if (rcredits + credits > 0) {
         int rc;
