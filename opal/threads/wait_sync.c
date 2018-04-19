@@ -59,7 +59,6 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
      */
  check_status:
     if( sync != wait_sync_list && num_thread_in_progress >= opal_max_thread_in_progress) {
-        OPAL_ATOMIC_ADD_FETCH32(&in, 1);
         while (sync->count > 0 && sync->done == false){
             if (!opal_fifo_is_empty(&opal_task_queue)) {
                 opal_task_t *task;
@@ -77,7 +76,7 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
             //printf("a helper %x count = %d done? = %d\n",sync, sync->count, sync->done);
         }
         //printf("helper leaving %x count = %d done? = %d\n",sync, sync->count, sync->done);
-        OPAL_ATOMIC_ADD_FETCH32(&in, -1);
+        /** OPAL_ATOMIC_ADD_FETCH32(&in, -1); */
 
         /**
          * At this point either the sync was completed in which case
