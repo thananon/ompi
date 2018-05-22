@@ -55,8 +55,11 @@ int mca_btl_ofi_afop (struct mca_btl_base_module_t *btl, struct mca_btl_base_end
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
+    /* copy the operand because it might get freed from upper layer */
+    comp->operand = (uint64_t) operand;
+
     rc = fi_fetch_atomic(ofi_btl->ofi_endpoint,
-                         (void*) &operand, 1, NULL,             /* operand */
+                         (void*) &comp->operand, 1, NULL,       /* operand */
                          local_address, local_handle->desc,     /* results */
                          btl_endpoint->peer_addr,               /* remote addr */
                          remote_address, remote_handle->rkey,   /* remote buffer */
@@ -100,16 +103,19 @@ int mca_btl_ofi_aop (struct mca_btl_base_module_t *btl, mca_btl_base_endpoint_t 
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
+    /* copy the operand because it might get freed from upper layer */
+    comp->operand = (uint64_t) operand;
+
     rc = fi_atomic(ofi_btl->ofi_endpoint,
-                         (void*) &operand, 1, NULL,             /* operand */
-                         btl_endpoint->peer_addr,               /* remote addr */
-                         remote_address, remote_handle->rkey,   /* remote buffer */
-                         fi_datatype, fi_op, comp);
+                   (void*) &comp->operand, 1, NULL,       /* operand */
+                   btl_endpoint->peer_addr,               /* remote addr */
+                   remote_address, remote_handle->rkey,   /* remote buffer */
+                   fi_datatype, fi_op, comp);
 
     if (rc == -FI_EAGAIN)
         return OPAL_ERR_OUT_OF_RESOURCE;
     else if (rc < 0) {
-        BTL_ERROR(("fi_fetch_atomic failed with rc=%d (%s)", rc, fi_strerror(-rc)));
+        BTL_ERROR(("fi_atomic failed with rc=%d (%s)", rc, fi_strerror(-rc)));
         abort();
     }
 
@@ -141,10 +147,14 @@ int mca_btl_ofi_acswap (struct mca_btl_base_module_t *btl, struct mca_btl_base_e
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
+    /* copy the operand because it might get freed from upper layer */
+    comp->operand = (uint64_t) value;
+    comp->compare = (uint64_t) compare;
+
     /* perform atomic */
     rc = fi_compare_atomic(ofi_btl->ofi_endpoint,
-                           &value, 1, NULL,
-                           &compare, NULL,
+                           (void*) &comp->operand, 1, NULL,
+                           (void*) &comp->compare, NULL,
                            local_address, local_handle->desc,
                            btl_endpoint->peer_addr,
                            remote_address, remote_handle->rkey,
@@ -161,5 +171,4 @@ int mca_btl_ofi_acswap (struct mca_btl_base_module_t *btl, struct mca_btl_base_e
 
     OPAL_THREAD_ADD_FETCH64(&ofi_btl->outstanding_rdma, 1);
     return OPAL_SUCCESS;
-
 }

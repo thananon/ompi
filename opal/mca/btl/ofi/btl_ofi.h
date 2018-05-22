@@ -139,7 +139,7 @@ typedef struct mca_btl_ofi_reg_t mca_btl_ofi_reg_t;
 OBJ_CLASS_DECLARATION(mca_btl_ofi_reg_t);
 
 /* completion structure store information needed
- * for callbacks */
+ * for RDMA callbacks */
 struct mca_btl_ofi_completion_t {
     opal_free_list_item_t comp_list;
     opal_free_list_t *my_list;
@@ -150,6 +150,10 @@ struct mca_btl_ofi_completion_t {
 
     void *local_address;
     mca_btl_base_registration_handle_t *local_handle;
+
+    /* information for atomic op */
+    uint64_t operand;
+    uint64_t compare;
 
     mca_btl_base_rdma_completion_fn_t cbfunc;
     void *cbcontext;
