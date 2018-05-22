@@ -66,6 +66,18 @@ static int mca_btl_ofi_component_register(void)
                                           OPAL_INFO_LVL_1,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &prov_exclude);
+    /* Note: better leave it at 1 for now. osc rdma module is designed for 1 completion
+     * at a time. Dealing with more than 1 completion in 1 read will confuse the osc rdma.
+     * source: 8 hours of debugging. :(*/
+    mca_btl_ofi_component.num_cqe_read = 1;
+    (void) mca_base_component_var_register(&mca_btl_ofi_component.super.btl_version,
+                                          "num_cq_read",
+                                          "Number of completion entries to read from a single cq_read. "
+                                          "(default: 1)",
+                                          MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                          OPAL_INFO_LVL_2,
+                                          MCA_BASE_VAR_SCOPE_READONLY,
+                                          &mca_btl_ofi_component.num_cqe_read);
 
 
 #if OPAL_C_HAVE__THREAD_LOCAL
@@ -418,7 +430,7 @@ static int mca_btl_ofi_component_progress (void)
     for (int i = 0 ; i < mca_btl_ofi_component.module_count ; ++i) {
         mca_btl_ofi_module_t *module = mca_btl_ofi_component.modules[i];
 
-        ret = fi_cq_read(module->cq, &cq_entry, MCA_BTL_OFI_MAX_CQ_READ_ENTRIES);
+        ret = fi_cq_read(module->cq, &cq_entry, mca_btl_ofi_component.num_cqe_read);
 
         if (0 < ret) {
             events_read = ret;

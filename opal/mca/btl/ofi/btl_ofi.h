@@ -107,6 +107,7 @@ struct mca_btl_ofi_component_t {
 
     /** number of TL modules */
     int module_count;
+    int num_cqe_read;
 
     size_t namelen;
 
