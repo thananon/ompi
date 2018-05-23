@@ -78,7 +78,7 @@ int mca_btl_ofi_get (mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoi
         return OPAL_ERR_OUT_OF_RESOURCE;
 
     if (0 != rc) {
-        BTL_ERROR(("fi_write failed with %d:%s", rc, fi_strerror(-rc)));
+        BTL_ERROR(("fi_read failed with %d:%s", rc, fi_strerror(-rc)));
         abort();
     }
 
