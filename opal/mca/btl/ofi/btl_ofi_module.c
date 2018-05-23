@@ -192,13 +192,22 @@ int mca_btl_ofi_reg_mem (void *reg_data, void *base, size_t size, mca_rcache_bas
     mca_btl_ofi_reg_t *ur = (mca_btl_ofi_reg_t*) reg;
 
     rc = fi_mr_reg(btl->domain, base, size, access_flags, 0,
-                   (uint64_t) base, 0, &ur->ur_mr, NULL);
+                   (uint64_t) reg, 0, &ur->ur_mr, NULL);
     if (0 != rc) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
     ur->handle.rkey = fi_mr_key(ur->ur_mr);
     ur->handle.desc = fi_mr_desc(ur->ur_mr);
+
+    /* In case the provider doesn't support FI_MR_VIRT_ADDR,
+     * we need to reference the remote address by the distance from base registered
+     * address. We keep this information to use in rdma/atomic operations. */
+    if (btl->use_virt_addr) {
+        ur->handle.base_addr = 0;
+    } else {
+        ur->handle.base_addr = base;
+    }
 
     return OPAL_SUCCESS;
 }

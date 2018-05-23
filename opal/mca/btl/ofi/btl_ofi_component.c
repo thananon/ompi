@@ -349,6 +349,11 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     module->ofi_endpoint = endpoint;
     module->linux_device_name = linux_device_name;
     module->outstanding_rdma = 0;
+    module->use_virt_addr = false;
+
+    if (ofi_info->domain_attr->mr_mode == FI_MR_BASIC ||
+        ofi_info->domain_attr->mr_mode & FI_MR_VIRT_ADDR)
+        module->use_virt_addr = true;
 
     /* initialize the rcache */
     mca_btl_ofi_rcache_init(module);

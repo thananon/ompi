@@ -12,7 +12,7 @@
 #include "btl_ofi.h"
 
 #define MCA_BTL_OFI_REQUIRED_CAPS       (FI_RMA | FI_ATOMIC)
-#define MCA_BTL_OFI_REQUESTED_MR_MODE   (FI_MR_VIRT_ADDR)
+#define MCA_BTL_OFI_REQUESTED_MR_MODE   (FI_MR_SCALABLE)
 
 /* handle provider specific hints */
 static void provider_hints_handler(struct fi_info *hints);
@@ -55,16 +55,7 @@ static int validate_info(struct fi_info *info)
 
     mr_mode = &info->domain_attr->mr_mode;
 
-    if (*mr_mode == FI_MR_UNSPEC) {
-        /* If ofi returns FI_MR_UNSPEC, it means the provider
-         * support both FI_MR_SCALABLE and FI_MR_BASIC.
-         * Hence, we will force FI_MR_BASIC */
-        *mr_mode = FI_MR_BASIC;
-
-    } else if ((*mr_mode & MCA_BTL_OFI_REQUESTED_MR_MODE) !=
-                           MCA_BTL_OFI_REQUESTED_MR_MODE) {
-        return OPAL_ERROR;
-    } else if (*mr_mode & FI_MR_LOCAL) {
+    if (*mr_mode & FI_MR_LOCAL) {
         /* ofi btl does not register local memory. */
         return OPAL_ERROR;
     }

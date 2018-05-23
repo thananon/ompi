@@ -58,6 +58,8 @@ int mca_btl_ofi_afop (struct mca_btl_base_module_t *btl, struct mca_btl_base_end
     /* copy the operand because it might get freed from upper layer */
     comp->operand = (uint64_t) operand;
 
+    remote_address = (remote_address - (uint64_t) remote_handle->base_addr);
+
     rc = fi_fetch_atomic(ofi_btl->ofi_endpoint,
                          (void*) &comp->operand, 1, NULL,       /* operand */
                          local_address, local_handle->desc,     /* results */
@@ -106,6 +108,8 @@ int mca_btl_ofi_aop (struct mca_btl_base_module_t *btl, mca_btl_base_endpoint_t 
     /* copy the operand because it might get freed from upper layer */
     comp->operand = (uint64_t) operand;
 
+    remote_address = (remote_address - (uint64_t) remote_handle->base_addr);
+
     rc = fi_atomic(ofi_btl->ofi_endpoint,
                    (void*) &comp->operand, 1, NULL,       /* operand */
                    btl_endpoint->peer_addr,               /* remote addr */
@@ -151,6 +155,7 @@ int mca_btl_ofi_acswap (struct mca_btl_base_module_t *btl, struct mca_btl_base_e
     comp->operand = (uint64_t) value;
     comp->compare = (uint64_t) compare;
 
+    remote_address = (remote_address - (uint64_t) remote_handle->base_addr);
     /* perform atomic */
     rc = fi_compare_atomic(ofi_btl->ofi_endpoint,
                            (void*) &comp->operand, 1, NULL,

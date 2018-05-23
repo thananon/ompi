@@ -79,6 +79,7 @@ struct mca_btl_ofi_module_t {
 
     /** whether the module has been fully initialized or not */
     bool initialized;
+    bool use_virt_addr;
 
     /** spin-lock to protect the module */
     volatile int32_t lock;
@@ -126,6 +127,7 @@ OPAL_MODULE_DECLSPEC extern mca_btl_ofi_component_t mca_btl_ofi_component;
 struct mca_btl_base_registration_handle_t {
     uint32_t rkey;
     void *desc;
+    void *base_addr;
 };
 
 struct mca_btl_ofi_reg_t {

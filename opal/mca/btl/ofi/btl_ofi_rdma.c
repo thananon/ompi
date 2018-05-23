@@ -64,6 +64,7 @@ int mca_btl_ofi_get (mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoi
                                         cbfunc, cbcontext, cbdata,
                                         MCA_BTL_OFI_TYPE_GET);
 
+    remote_address = (remote_address - (uint64_t) remote_handle->base_addr);
 
     /* Remote write data across the wire */
     rc = fi_read(ofi_btl->ofi_endpoint,
@@ -105,6 +106,8 @@ int mca_btl_ofi_put (mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *endpoi
                                         local_handle,
                                         cbfunc, cbcontext, cbdata,
                                         MCA_BTL_OFI_TYPE_PUT);
+
+    remote_address = (remote_address - (uint64_t) remote_handle->base_addr);
 
     /* Remote write data across the wire */
     rc = fi_write(ofi_btl->ofi_endpoint,
