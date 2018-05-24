@@ -186,7 +186,7 @@ static int mca_btl_ofi_deregister_mem (mca_btl_base_module_t *btl, mca_btl_base_
 int mca_btl_ofi_reg_mem (void *reg_data, void *base, size_t size, mca_rcache_base_registration_t *reg)
 {
     int rc;
-    static uint64_t access_flags = FI_REMOTE_WRITE | FI_REMOTE_READ;
+    static uint64_t access_flags = FI_REMOTE_WRITE | FI_REMOTE_READ | FI_READ | FI_WRITE;
 
     mca_btl_ofi_module_t *btl = (mca_btl_ofi_module_t*) reg_data;
     mca_btl_ofi_reg_t *ur = (mca_btl_ofi_reg_t*) reg;
