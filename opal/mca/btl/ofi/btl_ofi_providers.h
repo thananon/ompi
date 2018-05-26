@@ -1,6 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018      Intel, Inc, All rights reserved
+ * Copyright (c) 2018      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  *
  * $COPYRIGHT$
  *
@@ -22,6 +24,7 @@ static void provider_hints_handler(struct fi_info *hints);
 static int validate_info(struct fi_info *info);
 static int socks_validate_info(struct fi_info *info);
 static int psm2_validate_info(struct fi_info *info);
+static int gni_validate_info(struct fi_info *info);
 
 
 /* functions below */
@@ -33,6 +36,12 @@ static int socks_validate_info(struct fi_info *info)
 }
 
 static int psm2_validate_info(struct fi_info *info)
+{
+    /* placeholder */
+    return OPAL_SUCCESS;
+}
+
+static int gni_validate_info(struct fi_info *info)
 {
     /* placeholder */
     return OPAL_SUCCESS;
@@ -65,6 +74,8 @@ static int validate_info(struct fi_info *info)
         return socks_validate_info(info);
     } else if (!strcmp(prov_name, "psm2")) {
         return psm2_validate_info(info);
+    } else if (!strcmp(prov_name, "gni")) {
+        return gni_validate_info(info);
     }
 
     return OPAL_SUCCESS;
@@ -73,6 +84,15 @@ static int validate_info(struct fi_info *info)
 /* fill out specific hints needed for each provider */
 static void provider_hints_handler(struct fi_info *hints)
 {
-    /* placeholder for providers to modify their hints */
-    //char *prov_name = hints->fabric_attr->prov_name;
+    char *prov_name;
+
+    assert(hints->fabric_attr);
+    assert(hints->domain_attr);
+    assert(hints->fabric_attr->prov_name);
+
+    prov_name = hints->fabric_attr->prov_name;
+
+    if (!strcmp(prov_name, "gni")) {
+        hints->domain_attr->mr_mode = FI_MR_BASIC;
+    }
 }
