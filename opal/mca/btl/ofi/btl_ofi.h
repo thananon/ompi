@@ -125,7 +125,7 @@ typedef struct mca_btl_ofi_component_t mca_btl_ofi_component_t;
 OPAL_MODULE_DECLSPEC extern mca_btl_ofi_component_t mca_btl_ofi_component;
 
 struct mca_btl_base_registration_handle_t {
-    uint32_t rkey;
+    uint64_t rkey;
     void *desc;
     void *base_addr;
 };
