@@ -193,7 +193,7 @@ static mca_btl_base_module_t **mca_btl_ofi_component_init (int *num_btl_modules,
 
     info = info_list;
 
-    while(info->next || info) {
+    while(info) {
         rc = validate_info(info);
         if (OPAL_SUCCESS == rc) {
             /* Device passed sanity check, let's make a module.
