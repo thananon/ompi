@@ -14,7 +14,7 @@
 #include "btl_ofi.h"
 
 #define MCA_BTL_OFI_REQUIRED_CAPS       (FI_RMA | FI_ATOMIC)
-#define MCA_BTL_OFI_REQUESTED_MR_MODE   (FI_MR_SCALABLE)
+#define MCA_BTL_OFI_REQUESTED_MR_MODE   (FI_MR_UNSPEC)
 
 /* handle provider specific hints */
 static void provider_hints_handler(struct fi_info *hints);
@@ -51,7 +51,7 @@ static int gni_validate_info(struct fi_info *info)
  * return OPAL_ERROR if we dont have what we need. */
 static int validate_info(struct fi_info *info)
 {
-    int *mr_mode;
+    int mr_mode;
     char *prov_name = info->fabric_attr->prov_name;
 
     /* we need exactly all the required bits */
@@ -62,10 +62,10 @@ static int validate_info(struct fi_info *info)
     if (info->ep_attr->type != FI_EP_RDM)
         return OPAL_ERROR;
 
-    mr_mode = &info->domain_attr->mr_mode;
+    mr_mode = info->domain_attr->mr_mode;
 
-    if (*mr_mode & FI_MR_LOCAL) {
-        /* ofi btl does not register local memory. */
+    if (!(mr_mode == FI_MR_BASIC || mr_mode == FI_MR_SCALABLE ||
+         (mr_mode & ~(FI_MR_VIRT_ADDR | FI_MR_ALLOCATED | FI_MR_PROV_KEY)) == 0))
         return OPAL_ERROR;
     }
 
