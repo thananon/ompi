@@ -64,8 +64,19 @@ enum mca_btl_ofi_type {
 
 struct mca_btl_ofi_context_t {
     int32_t context_id;
+
+    /* transmit context */
     struct fid_ep *tx_ctx;
+
+    /* completion queue */
     struct fid_cq *cq;
+
+    /* completion info freelist */
+    /* We have it per context to reduce the thread contention
+     * on the freelist. Things can get really slow. */
+    opal_free_list_t comp_list;
+
+    opal_mutex_t lock;
 };
 typedef struct mca_btl_ofi_context_t mca_btl_ofi_context_t;
 
@@ -102,9 +113,6 @@ struct mca_btl_ofi_module_t {
      * there is no need for a complicated structure here at this time*/
     opal_list_t endpoints;
 
-    /* free lists */
-    opal_free_list_t comp_list;
-
     /** registration cache */
     mca_rcache_base_module_t *rcache;
 };
@@ -120,6 +128,7 @@ struct mca_btl_ofi_component_t {
 
     /** number of TL modules */
     int module_count;
+    int num_contexts_per_module;
     int num_cqe_read;
 
     size_t namelen;
@@ -161,6 +170,7 @@ struct mca_btl_ofi_completion_t {
 
     struct mca_btl_base_module_t *btl;
     struct mca_btl_base_endpoint_t *endpoint;
+    struct mca_btl_ofi_context_t *my_context;
     uint32_t type;
 
     void *local_address;

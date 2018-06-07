@@ -31,8 +31,8 @@
 #include <string.h>
 
 #include "btl_ofi.h"
+#include "btl_ofi_endpoint.h"
 #include "btl_ofi_rdma.h"
-
 
 #define MCA_BTL_OFI_REQUIRED_CAPS       (FI_RMA | FI_ATOMIC)
 #define MCA_BTL_OFI_REQUESTED_MR_MODE   (FI_MR_ALLOCATED | FI_MR_PROV_KEY | FI_MR_VIRT_ADDR)
@@ -123,6 +123,17 @@ static int mca_btl_ofi_component_register(void)
                                           OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &ofi_progress_mode);
+
+    mca_btl_ofi_component.num_contexts_per_module = 1;
+    (void) mca_base_component_var_register(&mca_btl_ofi_component.super.btl_version,
+                                          "num_contexts_per_module",
+                                          "number of communication context per module to create. "
+                                          "This should increase multithreaded performance but it is "
+                                          "advised that this number should be lower than total cores.",
+                                          MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                          OPAL_INFO_LVL_5,
+                                          MCA_BASE_VAR_SCOPE_READONLY,
+                                          &mca_btl_ofi_component.num_contexts_per_module);
 
 #if OPAL_C_HAVE__THREAD_LOCAL
     mca_btl_ofi_component.bind_threads_to_contexts = true;
@@ -289,29 +300,34 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     int rc;
     int *module_count = &mca_btl_ofi_component.module_count;
     size_t namelen;
-    mca_btl_ofi_module_t *module;
+    size_t num_contexts_to_create;
 
     char *linux_device_name;
     char ep_name[FI_NAME_MAX];
+
     struct fi_info *ofi_info;
-    struct fi_tx_attr tx_attr = {0};
-    struct fi_cq_attr cq_attr = {0};
+    struct fi_ep_attr *ep_attr;
+    struct fi_domain_attr *domain_attr;
     struct fi_av_attr av_attr = {0};
     struct fid_fabric *fabric = NULL;
     struct fid_domain *domain = NULL;
     struct fid_ep *sep = NULL;
     struct fid_av *av = NULL;
 
+    mca_btl_ofi_module_t *module;
+
     /* allocate module */
     module = (mca_btl_ofi_module_t*) calloc(1, sizeof(mca_btl_ofi_module_t));
     if (NULL == module) {
+        BTL_ERROR(("failed to allocate memory for OFI module"));
         goto fail;
     }
     *module = mca_btl_ofi_module_template;
 
-
     /* make a copy of the given info to store on the module */
     ofi_info = fi_dupinfo(info);
+    ep_attr = ofi_info->ep_attr;
+    domain_attr = ofi_info->domain_attr;
 
     linux_device_name = info->domain_attr->name;
     BTL_VERBOSE(("initializing dev:%s provider:%s",
@@ -338,8 +354,20 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
+    /* modify the info to let the provider know we are creating x contexts */
+    num_contexts_to_create = mca_btl_ofi_component.num_contexts_per_module;
+
+     if (num_contexts_to_create > domain_attr->max_ep_tx_ctx) {
+        BTL_ERROR(("cannot create requested %u contexts. (max=%zu)",
+                        module->num_contexts,
+                        domain_attr->max_ep_tx_ctx));
+        goto fail;
+    }
+
+    ep_attr->tx_ctx_cnt = num_contexts_to_create;
+    ep_attr->rx_ctx_cnt = num_contexts_to_create;
+
     /* create scalable endpoint */
-    ofi_info->ep_attr->tx_ctx_cnt = 20;
     rc = fi_scalable_ep(domain, ofi_info, &sep, NULL);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_endpoint with err=%s",
@@ -349,52 +377,14 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-
     /* create contexts */
-    module->num_contexts = ofi_info->ep_attr->tx_ctx_cnt;
-    module->contexts = calloc(module->num_contexts, sizeof(mca_btl_ofi_context_t));
-
-    BTL_VERBOSE(("creating %d transmit context for module %p.", module->num_contexts,
-                                                                (void*) module));
-    for (int i=0; i < module->num_contexts; i++) {
-
-        mca_btl_ofi_context_t *ofi_context = &module->contexts[i];
-
-        /* transmit context */
-        rc = fi_tx_context(sep, i, &tx_attr, &ofi_context->tx_ctx, NULL);
-        if (0 != rc) {
-            BTL_VERBOSE(("%s failed fi_tx_context with err=%s",
-                            linux_device_name,
-                            fi_strerror(-rc)
-                            ));
-            goto fail;
-        }
-
-        /* CQ */
-        cq_attr.format = FI_CQ_FORMAT_CONTEXT;
-        cq_attr.wait_obj = FI_WAIT_NONE;
-        rc = fi_cq_open(domain, &cq_attr, &ofi_context->cq, NULL);
-        if (0 != rc) {
-            BTL_VERBOSE(("%s failed fi_cq_open with err=%s",
-                            linux_device_name,
-                            fi_strerror(-rc)
-                            ));
-            goto fail;
-        }
-
-        /* bind cq to transmit context */
-        uint32_t cq_flags = (FI_TRANSMIT);
-        rc = fi_ep_bind(ofi_context->tx_ctx, (fid_t)ofi_context->cq, cq_flags);
-        if (0 != rc) {
-            BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
-                            linux_device_name,
-                            fi_strerror(-rc)
-                            ));
-            goto fail;
-        }
-
-        /* assign the id */
-        ofi_context->context_id = i;
+    module->contexts = mca_btl_ofi_contexts_alloc(ofi_info,
+                                                  domain,
+                                                  sep,
+                                                  num_contexts_to_create);
+    if (NULL == module->contexts) {
+        /* error message is already printed */
+        goto fail;
     }
 
     /* AV */
@@ -408,7 +398,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-    /* bind CQ and AV to endpoint */
+    /* bind AV to endpoint */
     rc = fi_scalable_ep_bind(sep, (fid_t)av, 0);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
@@ -436,6 +426,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     module->av = av;
     module->sep = sep;
     module->ofi_endpoint = module->contexts[0].tx_ctx;
+    module->num_contexts = num_contexts_to_create;
     module->linux_device_name = linux_device_name;
     module->outstanding_rdma = 0;
     module->use_virt_addr = false;
@@ -448,25 +439,8 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     /* initialize the rcache */
     mca_btl_ofi_rcache_init(module);
 
+    /* create endpoint list */
     OBJ_CONSTRUCT(&module->endpoints, opal_list_t);
-
-    /* init free lists */
-    OBJ_CONSTRUCT(&module->comp_list, opal_free_list_t);
-    rc = opal_free_list_init(&module->comp_list,
-                             sizeof(mca_btl_ofi_completion_t),
-                             opal_cache_line_size,
-                             OBJ_CLASS(mca_btl_ofi_completion_t),
-                             0,
-                             0,
-                             128,
-                             -1,
-                             128,
-                             NULL,
-                             0,
-                             NULL,
-                             NULL,
-                             NULL);
-    assert(OPAL_SUCCESS == rc);
 
     /* create and send the modex for this device */
     namelen = sizeof(ep_name);
@@ -516,7 +490,6 @@ fail:
     return OPAL_ERR_OUT_OF_RESOURCE;
 }
 
-
 int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context);
 /**
  * @brief OFI BTL progress function
@@ -526,14 +499,18 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context);
 static int mca_btl_ofi_component_progress (void)
 {
     int events = 0;
+    mca_btl_ofi_context_t *context;
 
     for (int i = 0 ; i < mca_btl_ofi_component.module_count ; ++i) {
         mca_btl_ofi_module_t *module = mca_btl_ofi_component.modules[i];
 
         for (int j = 0 ; j < module->num_contexts ; j++ ) {
-            /* try lock */
-            events += mca_btl_ofi_context_progress(&module->contexts[i]);
-            /* unlock */
+            context = &module->contexts[j];
+
+            if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
+                events += mca_btl_ofi_context_progress(&module->contexts[j]);
+                OPAL_THREAD_UNLOCK(&context->lock);
+            }
         }
     }
 
@@ -566,6 +543,7 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
                 case MCA_BTL_OFI_TYPE_AOP:
                 case MCA_BTL_OFI_TYPE_AFOP:
                 case MCA_BTL_OFI_TYPE_CSWAP:
+                    BTL_VERBOSE(("one completion"));
 
                     /* call the callback */
                     if (comp->cbfunc) {
@@ -634,5 +612,5 @@ mca_btl_ofi_component_t mca_btl_ofi_component = {
 
         .btl_init = mca_btl_ofi_component_init,
         .btl_progress = mca_btl_ofi_component_progress,
-    }
+    },
 };

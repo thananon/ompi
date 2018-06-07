@@ -49,5 +49,12 @@ OBJ_CLASS_DECLARATION(mca_btl_ofi_endpoint_t);
 
 mca_btl_base_endpoint_t *mca_btl_ofi_endpoint_create (opal_proc_t *proc, struct fid_ep *ep);
 
+mca_btl_ofi_context_t *mca_btl_ofi_contexts_alloc(struct fi_info *info,
+                                                  struct fid_domain *domain,
+                                                  struct fid_ep *sep,
+                                                  size_t num_contexts);
+
+mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl);
+
 END_C_DECLS
 #endif
