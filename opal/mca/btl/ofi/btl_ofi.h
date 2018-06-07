@@ -62,6 +62,13 @@ enum mca_btl_ofi_type {
     MCA_BTL_OFI_TYPE_TOTAL
 };
 
+struct mca_btl_ofi_context_t {
+    int32_t context_id;
+    struct fid_ep *tx_ctx;
+    struct fid_cq *cq;
+};
+typedef struct mca_btl_ofi_context_t mca_btl_ofi_context_t;
+
 /**
  * @brief OFI BTL module
  */
@@ -74,8 +81,11 @@ struct mca_btl_ofi_module_t {
     struct fid_fabric *fabric;
     struct fid_domain *domain;
     struct fid_ep *ofi_endpoint;
-    struct fid_cq *cq;
+    struct fid_ep *sep;
     struct fid_av *av;
+
+    int num_contexts;
+    mca_btl_ofi_context_t *contexts;
 
     char *linux_device_name;
 

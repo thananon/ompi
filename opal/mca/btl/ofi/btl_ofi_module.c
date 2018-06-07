@@ -247,16 +247,12 @@ int mca_btl_ofi_finalize (mca_btl_base_module_t* btl)
 
     assert(btl);
 
-    if (NULL != ofi_btl->cq) {
-        fi_close(&ofi_btl->cq->fid);
-    }
-
     if (NULL != ofi_btl->av) {
         fi_close(&ofi_btl->av->fid);
     }
 
-    if (NULL != ofi_btl->ofi_endpoint) {
-        fi_close(&ofi_btl->ofi_endpoint->fid);
+    if (NULL != ofi_btl->sep) {
+        fi_close(&ofi_btl->sep->fid);
     }
 
     if (NULL != ofi_btl->domain) {

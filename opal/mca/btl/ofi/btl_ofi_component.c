@@ -294,13 +294,21 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     char *linux_device_name;
     char ep_name[FI_NAME_MAX];
     struct fi_info *ofi_info;
+    struct fi_tx_attr tx_attr = {0};
     struct fi_cq_attr cq_attr = {0};
     struct fi_av_attr av_attr = {0};
     struct fid_fabric *fabric = NULL;
     struct fid_domain *domain = NULL;
-    struct fid_ep *endpoint = NULL;
-    struct fid_cq *cq = NULL;
+    struct fid_ep *sep = NULL;
     struct fid_av *av = NULL;
+
+    /* allocate module */
+    module = (mca_btl_ofi_module_t*) calloc(1, sizeof(mca_btl_ofi_module_t));
+    if (NULL == module) {
+        goto fail;
+    }
+    *module = mca_btl_ofi_module_template;
+
 
     /* make a copy of the given info to store on the module */
     ofi_info = fi_dupinfo(info);
@@ -330,8 +338,9 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-    /* endpoint */
-    rc = fi_endpoint(domain, ofi_info, &endpoint, NULL);
+    /* create scalable endpoint */
+    ofi_info->ep_attr->tx_ctx_cnt = 20;
+    rc = fi_scalable_ep(domain, ofi_info, &sep, NULL);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_endpoint with err=%s",
                         linux_device_name,
@@ -340,16 +349,52 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-    /* CQ */
-    cq_attr.format = FI_CQ_FORMAT_CONTEXT;
-    cq_attr.wait_obj = FI_WAIT_NONE;
-    rc = fi_cq_open(domain, &cq_attr, &cq, NULL);
-    if (0 != rc) {
-        BTL_VERBOSE(("%s failed fi_cq_open with err=%s",
-                        linux_device_name,
-                        fi_strerror(-rc)
-                        ));
-        goto fail;
+
+    /* create contexts */
+    module->num_contexts = ofi_info->ep_attr->tx_ctx_cnt;
+    module->contexts = calloc(module->num_contexts, sizeof(mca_btl_ofi_context_t));
+
+    BTL_VERBOSE(("creating %d transmit context for module %p.", module->num_contexts,
+                                                                (void*) module));
+    for (int i=0; i < module->num_contexts; i++) {
+
+        mca_btl_ofi_context_t *ofi_context = &module->contexts[i];
+
+        /* transmit context */
+        rc = fi_tx_context(sep, i, &tx_attr, &ofi_context->tx_ctx, NULL);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_tx_context with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto fail;
+        }
+
+        /* CQ */
+        cq_attr.format = FI_CQ_FORMAT_CONTEXT;
+        cq_attr.wait_obj = FI_WAIT_NONE;
+        rc = fi_cq_open(domain, &cq_attr, &ofi_context->cq, NULL);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_cq_open with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto fail;
+        }
+
+        /* bind cq to transmit context */
+        uint32_t cq_flags = (FI_TRANSMIT);
+        rc = fi_ep_bind(ofi_context->tx_ctx, (fid_t)ofi_context->cq, cq_flags);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto fail;
+        }
+
+        /* assign the id */
+        ofi_context->context_id = i;
     }
 
     /* AV */
@@ -363,19 +408,8 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-
     /* bind CQ and AV to endpoint */
-    uint32_t cq_flags = (FI_TRANSMIT);
-    rc = fi_ep_bind(endpoint, (fid_t)cq, cq_flags);
-    if (0 != rc) {
-        BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
-                        linux_device_name,
-                        fi_strerror(-rc)
-                        ));
-        goto fail;
-    }
-
-    rc = fi_ep_bind(endpoint, (fid_t)av, 0);
+    rc = fi_scalable_ep_bind(sep, (fid_t)av, 0);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
                         linux_device_name,
@@ -385,7 +419,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     }
 
     /* enable the endpoint for using */
-    rc = fi_enable(endpoint);
+    rc = fi_enable(sep);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_enable with err=%s",
                         linux_device_name,
@@ -395,19 +429,13 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     }
 
     /* Everything succeeded, lets create a module for this device. */
-    module = (mca_btl_ofi_module_t*) calloc(1, sizeof(mca_btl_ofi_module_t));
-    if (NULL == module) {
-        goto fail;
-    }
-    *module = mca_btl_ofi_module_template;
-
     /* store the information. */
     module->fabric_info = ofi_info;
     module->fabric = fabric;
     module->domain = domain;
-    module->cq = cq;
     module->av = av;
-    module->ofi_endpoint = endpoint;
+    module->sep = sep;
+    module->ofi_endpoint = module->contexts[0].tx_ctx;
     module->linux_device_name = linux_device_name;
     module->outstanding_rdma = 0;
     module->use_virt_addr = false;
@@ -442,7 +470,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
 
     /* create and send the modex for this device */
     namelen = sizeof(ep_name);
-    rc = fi_getname((fid_t)endpoint, &ep_name[0], &namelen);
+    rc = fi_getname((fid_t)sep, &ep_name[0], &namelen);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_getname with err=%s",
                         linux_device_name,
@@ -469,12 +497,9 @@ fail:
     if (NULL != av) {
         fi_close(&av->fid);
     }
-    if (NULL != cq) {
-        fi_close(&cq->fid);
-    }
 
-    if (NULL != endpoint) {
-        fi_close(&endpoint->fid);
+    if (NULL != sep) {
+        fi_close(&sep->fid);
     }
 
     if (NULL != domain) {
@@ -485,11 +510,14 @@ fail:
         fi_close(&fabric->fid);
     }
 
+    free(module);
+
     /* not really a failure. just skip this device. */
     return OPAL_ERR_OUT_OF_RESOURCE;
 }
 
 
+int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context);
 /**
  * @brief OFI BTL progress function
  *
@@ -497,6 +525,22 @@ fail:
  */
 static int mca_btl_ofi_component_progress (void)
 {
+    int events = 0;
+
+    for (int i = 0 ; i < mca_btl_ofi_component.module_count ; ++i) {
+        mca_btl_ofi_module_t *module = mca_btl_ofi_component.modules[i];
+
+        for (int j = 0 ; j < module->num_contexts ; j++ ) {
+            /* try lock */
+            events += mca_btl_ofi_context_progress(&module->contexts[i]);
+            /* unlock */
+        }
+    }
+
+    return events;
+}
+
+int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
 
     int ret = 0;
     int events_read;
@@ -506,75 +550,72 @@ static int mca_btl_ofi_component_progress (void)
 
     mca_btl_ofi_completion_t *comp;
 
-    for (int i = 0 ; i < mca_btl_ofi_component.module_count ; ++i) {
-        mca_btl_ofi_module_t *module = mca_btl_ofi_component.modules[i];
+    ret = fi_cq_read(context->cq, &cq_entry, mca_btl_ofi_component.num_cqe_read);
 
-        ret = fi_cq_read(module->cq, &cq_entry, mca_btl_ofi_component.num_cqe_read);
+    if (0 < ret) {
+        events_read = ret;
+        for (int j = 0; j < events_read; j++) {
+            if (NULL != cq_entry[j].op_context) {
+                ++events;
+                comp = (mca_btl_ofi_completion_t*) cq_entry[j].op_context;
+                mca_btl_ofi_module_t *ofi_btl = (mca_btl_ofi_module_t*)comp->btl;
 
-        if (0 < ret) {
-            events_read = ret;
-            for (int j = 0; j < events_read; j++) {
-                if (NULL != cq_entry[j].op_context) {
-                    ++events;
-                    comp = (mca_btl_ofi_completion_t*) cq_entry[j].op_context;
-                    mca_btl_ofi_module_t *ofi_btl = (mca_btl_ofi_module_t*)comp->btl;
+                switch (comp->type) {
+                case MCA_BTL_OFI_TYPE_GET:
+                case MCA_BTL_OFI_TYPE_PUT:
+                case MCA_BTL_OFI_TYPE_AOP:
+                case MCA_BTL_OFI_TYPE_AFOP:
+                case MCA_BTL_OFI_TYPE_CSWAP:
 
-                    switch (comp->type) {
-                    case MCA_BTL_OFI_TYPE_GET:
-                    case MCA_BTL_OFI_TYPE_PUT:
-                    case MCA_BTL_OFI_TYPE_AOP:
-                    case MCA_BTL_OFI_TYPE_AFOP:
-                    case MCA_BTL_OFI_TYPE_CSWAP:
-
-                        /* call the callback */
-                        if (comp->cbfunc) {
-                            comp->cbfunc (comp->btl, comp->endpoint,
-                                             comp->local_address, comp->local_handle,
-                                             comp->cbcontext, comp->cbdata, OPAL_SUCCESS);
-                        }
-
-                        /* return the completion handler */
-                        opal_free_list_return(comp->my_list, (opal_free_list_item_t*) comp);
-
-                        MCA_BTL_OFI_NUM_RDMA_DEC(ofi_btl);
-                        break;
-
-                    default:
-                        /* catasthrophic */
-                        BTL_ERROR(("unknown completion type"));
-                        MCA_BTL_OFI_ABORT();
+                    /* call the callback */
+                    if (comp->cbfunc) {
+                        comp->cbfunc (comp->btl, comp->endpoint,
+                                         comp->local_address, comp->local_handle,
+                                         comp->cbcontext, comp->cbdata, OPAL_SUCCESS);
                     }
+
+                    /* return the completion handler */
+                    opal_free_list_return(comp->my_list, (opal_free_list_item_t*) comp);
+
+                    MCA_BTL_OFI_NUM_RDMA_DEC(ofi_btl);
+                    break;
+
+                default:
+                    /* catasthrophic */
+                    BTL_ERROR(("unknown completion type"));
+                    MCA_BTL_OFI_ABORT();
                 }
             }
-        } else if (OPAL_UNLIKELY(ret == -FI_EAVAIL)) {
-            ret = fi_cq_readerr(module->cq, &cqerr, 0);
-
-            /* cq readerr failed!? */
-            if (0 > ret) {
-                BTL_ERROR(("%s:%d: Error returned from fi_cq_readerr: %s(%d)",
-                           __FILE__, __LINE__, fi_strerror(-ret), ret));
-            } else {
-                BTL_ERROR(("fi_cq_readerr: (provider err_code = %d)\n",
-                           cqerr.prov_errno));
-            }
-
-            MCA_BTL_OFI_ABORT();
-
         }
+    } else if (OPAL_UNLIKELY(ret == -FI_EAVAIL)) {
+        ret = fi_cq_readerr(context->cq, &cqerr, 0);
+
+        /* cq readerr failed!? */
+        if (0 > ret) {
+            BTL_ERROR(("%s:%d: Error returned from fi_cq_readerr: %s(%d)",
+                       __FILE__, __LINE__, fi_strerror(-ret), ret));
+        } else {
+            BTL_ERROR(("fi_cq_readerr: (provider err_code = %d)\n",
+                       cqerr.prov_errno));
+        }
+
+        MCA_BTL_OFI_ABORT();
+
+    }
 #ifdef FI_EINTR
-        /* sometimes, sockets provider complain about interupt. */
-        else if (OPAL_UNLIKELY(ret == -FI_EINTR)) {
-            continue;
-        }
+    /* sometimes, sockets provider complain about interupt. */
+    else if (OPAL_UNLIKELY(ret == -FI_EINTR)) {
+
+    }
 #endif
-        /* If the error is not FI_EAGAIN, report the error and abort. */
-        else if (OPAL_UNLIKELY(ret != -FI_EAGAIN)) {
-            BTL_ERROR(("fi_cq_read returned error %d:%s", ret, fi_strerror(-ret)));
-            MCA_BTL_OFI_ABORT();
-        }
+    /* If the error is not FI_EAGAIN, report the error and abort. */
+    else if (OPAL_UNLIKELY(ret != -FI_EAGAIN)) {
+        BTL_ERROR(("fi_cq_read returned error %d:%s", ret, fi_strerror(-ret)));
+        MCA_BTL_OFI_ABORT();
     }
 
     return events;
+
 }
 
 /** OFI btl component */
