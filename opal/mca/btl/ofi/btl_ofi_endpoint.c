@@ -69,6 +69,7 @@ mca_btl_ofi_context_t *mca_btl_ofi_contexts_alloc(struct fi_info *info,
 
     struct fi_cq_attr cq_attr = {0};
     struct fi_tx_attr tx_attr = {0};
+    struct fi_rx_attr rx_attr = {0};
 
     mca_btl_ofi_context_t *contexts;
 
@@ -88,6 +89,19 @@ mca_btl_ofi_context_t *mca_btl_ofi_contexts_alloc(struct fi_info *info,
                             ));
             goto context_fail;
         }
+
+        /* We don't actually need a receiving context as we only do one-sided.
+         * However, sockets provider will hang if we dont have one. It is
+         * also nice to have equal number of tx/rx context. */
+        rc = fi_rx_context(sep, i, &rx_attr, &contexts[i].rx_ctx, NULL);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_rx_context with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto context_fail;
+        }
+
 
         /* create CQ */
         cq_attr.format = FI_CQ_FORMAT_CONTEXT;
@@ -140,9 +154,15 @@ mca_btl_ofi_context_t *mca_btl_ofi_contexts_alloc(struct fi_info *info,
 context_fail:
     /* close and free */
     for(i=0; i < num_contexts; i++) {
+
         if (NULL != contexts[i].tx_ctx) {
             fi_close(&contexts[i].tx_ctx->fid);
         }
+
+        if (NULL != contexts[i].rx_ctx) {
+            fi_close(&contexts[i].rx_ctx->fid);
+        }
+
         if(NULL != contexts[i].cq) {
             fi_close(&contexts[i].cq->fid);
         }
@@ -154,5 +174,6 @@ context_fail:
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 {
     static int cur_num = 0;
-    return &btl->contexts[cur_num++%btl->num_contexts];
+    return &btl->contexts[0];
+    /** return &btl->contexts[cur_num++%btl->num_contexts]; */
 }

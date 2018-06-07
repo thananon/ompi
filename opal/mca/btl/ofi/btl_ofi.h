@@ -67,6 +67,7 @@ struct mca_btl_ofi_context_t {
 
     /* transmit context */
     struct fid_ep *tx_ctx;
+    struct fid_ep *rx_ctx;
 
     /* completion queue */
     struct fid_cq *cq;

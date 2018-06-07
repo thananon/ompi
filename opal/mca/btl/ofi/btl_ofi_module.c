@@ -252,12 +252,19 @@ int mca_btl_ofi_finalize (mca_btl_base_module_t* btl)
     /* loop over all the contexts */
     for (i=0; i < ofi_btl->num_contexts; i++) {
         context = &ofi_btl->contexts[i];
+
         if (NULL != context->cq) {
             fi_close(&context->cq->fid);
         }
+
         if (NULL != context->tx_ctx) {
             fi_close(&context->tx_ctx->fid);
         }
+
+        if (NULL != context->rx_ctx) {
+            fi_close(&context->rx_ctx->fid);
+        }
+
         OBJ_DESTRUCT(&context->comp_list);
     }
 
