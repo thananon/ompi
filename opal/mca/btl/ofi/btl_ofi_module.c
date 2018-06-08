@@ -245,35 +245,21 @@ int mca_btl_ofi_finalize (mca_btl_base_module_t* btl)
     int i;
     mca_btl_ofi_module_t *ofi_btl = (mca_btl_ofi_module_t *) btl;
     mca_btl_ofi_endpoint_t *endpoint, *next;
-    mca_btl_ofi_context_t *context;
 
     assert(btl);
 
     /* loop over all the contexts */
     for (i=0; i < ofi_btl->num_contexts; i++) {
-        context = &ofi_btl->contexts[i];
-
-        if (NULL != context->cq) {
-            fi_close(&context->cq->fid);
-        }
-
-        if (NULL != context->tx_ctx) {
-            fi_close(&context->tx_ctx->fid);
-        }
-
-        if (NULL != context->rx_ctx) {
-            fi_close(&context->rx_ctx->fid);
-        }
-
-        OBJ_DESTRUCT(&context->comp_list);
+        mca_btl_ofi_context_finalize(&ofi_btl->contexts[i], ofi_btl->is_scalable_ep);
     }
+    free(ofi_btl->contexts);
 
     if (NULL != ofi_btl->av) {
         fi_close(&ofi_btl->av->fid);
     }
 
-    if (NULL != ofi_btl->sep) {
-        fi_close(&ofi_btl->sep->fid);
+    if (NULL != ofi_btl->ofi_endpoint) {
+        fi_close(&ofi_btl->ofi_endpoint->fid);
     }
 
     if (NULL != ofi_btl->domain) {

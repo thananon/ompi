@@ -93,7 +93,6 @@ struct mca_btl_ofi_module_t {
     struct fid_fabric *fabric;
     struct fid_domain *domain;
     struct fid_ep *ofi_endpoint;
-    struct fid_ep *sep;
     struct fid_av *av;
 
     int num_contexts;
@@ -104,6 +103,7 @@ struct mca_btl_ofi_module_t {
     /** whether the module has been fully initialized or not */
     bool initialized;
     bool use_virt_addr;
+    bool is_scalable_ep;
 
     /** spin-lock to protect the module */
     volatile int32_t lock;

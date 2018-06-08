@@ -311,7 +311,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     struct fi_av_attr av_attr = {0};
     struct fid_fabric *fabric = NULL;
     struct fid_domain *domain = NULL;
-    struct fid_ep *sep = NULL;
+    struct fid_ep *ep = NULL;
     struct fid_av *av = NULL;
 
     mca_btl_ofi_module_t *module;
@@ -354,39 +354,6 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-    /* modify the info to let the provider know we are creating x contexts */
-    num_contexts_to_create = mca_btl_ofi_component.num_contexts_per_module;
-
-     if (num_contexts_to_create > domain_attr->max_ep_tx_ctx) {
-        BTL_ERROR(("cannot create requested %u contexts. (max=%zu)",
-                        module->num_contexts,
-                        domain_attr->max_ep_tx_ctx));
-        goto fail;
-    }
-
-    ep_attr->tx_ctx_cnt = num_contexts_to_create;
-    ep_attr->rx_ctx_cnt = num_contexts_to_create;
-
-    /* create scalable endpoint */
-    rc = fi_scalable_ep(domain, ofi_info, &sep, NULL);
-    if (0 != rc) {
-        BTL_VERBOSE(("%s failed fi_endpoint with err=%s",
-                        linux_device_name,
-                        fi_strerror(-rc)
-                        ));
-        goto fail;
-    }
-
-    /* create contexts */
-    module->contexts = mca_btl_ofi_contexts_alloc(ofi_info,
-                                                  domain,
-                                                  sep,
-                                                  num_contexts_to_create);
-    if (NULL == module->contexts) {
-        /* error message is already printed */
-        goto fail;
-    }
-
     /* AV */
     av_attr.type = FI_AV_MAP;
     rc = fi_av_open(domain, &av_attr, &av, NULL);
@@ -398,18 +365,71 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
-    /* bind AV to endpoint */
-    rc = fi_scalable_ep_bind(sep, (fid_t)av, 0);
-    if (0 != rc) {
-        BTL_VERBOSE(("%s failed fi_ep_bind with err=%s",
-                        linux_device_name,
-                        fi_strerror(-rc)
-                        ));
+
+    /* If the domain support scalable endpoint. */
+    if (domain_attr->max_ep_tx_ctx > 1) {
+
+        /* modify the info to let the provider know we are creating x contexts */
+        num_contexts_to_create = mca_btl_ofi_component.num_contexts_per_module;
+
+         if (num_contexts_to_create > domain_attr->max_ep_tx_ctx) {
+            BTL_VERBOSE(("cannot create requested %u contexts. (node max=%zu)",
+                            module->num_contexts,
+                            domain_attr->max_ep_tx_ctx));
+            goto fail;
+         }
+
+        ep_attr->tx_ctx_cnt = num_contexts_to_create;
+        ep_attr->rx_ctx_cnt = num_contexts_to_create;
+
+        /* create scalable endpoint */
+        rc = fi_scalable_ep(domain, ofi_info, &ep, NULL);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_scalable_ep with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto fail;
+        }
+
+        module->num_contexts = num_contexts_to_create;
+        module->is_scalable_ep = true;
+
+        /* create contexts */
+        module->contexts = mca_btl_ofi_context_alloc_scalable(ofi_info,
+                                domain, ep, av,
+                                num_contexts_to_create);
+
+   } else {
+
+        BTL_VERBOSE(("%s does not support scalable endpoint. Falling back "
+                     "to single normal endpoint.",
+                        ofi_info->fabric_attr->prov_name));
+
+        rc = fi_endpoint(domain, ofi_info, &ep, NULL);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_endpoint with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto fail;
+        }
+
+        module->num_contexts = 1;
+        module->is_scalable_ep = false;
+
+        /* create contexts */
+        module->contexts = mca_btl_ofi_context_alloc_normal(ofi_info,
+                                                            domain, ep, av);
+    }
+
+    if (NULL == module->contexts) {
+        /* error message is already printed */
         goto fail;
     }
 
     /* enable the endpoint for using */
-    rc = fi_enable(sep);
+    rc = fi_enable(ep);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_enable with err=%s",
                         linux_device_name,
@@ -424,9 +444,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
     module->fabric = fabric;
     module->domain = domain;
     module->av = av;
-    module->sep = sep;
-    module->ofi_endpoint = module->contexts[0].tx_ctx;
-    module->num_contexts = num_contexts_to_create;
+    module->ofi_endpoint = ep;
     module->linux_device_name = linux_device_name;
     module->outstanding_rdma = 0;
     module->use_virt_addr = false;
@@ -444,7 +462,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
 
     /* create and send the modex for this device */
     namelen = sizeof(ep_name);
-    rc = fi_getname((fid_t)sep, &ep_name[0], &namelen);
+    rc = fi_getname((fid_t)ep, &ep_name[0], &namelen);
     if (0 != rc) {
         BTL_VERBOSE(("%s failed fi_getname with err=%s",
                         linux_device_name,
@@ -468,12 +486,20 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
 
 fail:
     /* clean up */
+
+    /* if the contexts have not been initiated, num_contexts should
+     * be zero and we skip this. */
+    for (int i=0; i < module->num_contexts; i++) {
+        mca_btl_ofi_context_finalize(&module->contexts[i], module->is_scalable_ep);
+    }
+    free(module->contexts);
+
     if (NULL != av) {
         fi_close(&av->fid);
     }
 
-    if (NULL != sep) {
-        fi_close(&sep->fid);
+    if (NULL != ep) {
+        fi_close(&ep->fid);
     }
 
     if (NULL != domain) {
@@ -483,7 +509,6 @@ fail:
     if (NULL != fabric) {
         fi_close(&fabric->fid);
     }
-
     free(module);
 
     /* not really a failure. just skip this device. */
@@ -543,7 +568,6 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
                 case MCA_BTL_OFI_TYPE_AOP:
                 case MCA_BTL_OFI_TYPE_AFOP:
                 case MCA_BTL_OFI_TYPE_CSWAP:
-                    BTL_VERBOSE(("one completion"));
 
                     /* call the callback */
                     if (comp->cbfunc) {
