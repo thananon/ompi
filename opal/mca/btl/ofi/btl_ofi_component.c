@@ -365,20 +365,21 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
         goto fail;
     }
 
+    num_contexts_to_create = mca_btl_ofi_component.num_contexts_per_module;
 
     /* If the domain support scalable endpoint. */
     if (domain_attr->max_ep_tx_ctx > 1) {
 
-        /* modify the info to let the provider know we are creating x contexts */
-        num_contexts_to_create = mca_btl_ofi_component.num_contexts_per_module;
+        BTL_VERBOSE(("btl/ofi using scalable endpoint."));
 
-         if (num_contexts_to_create > domain_attr->max_ep_tx_ctx) {
+        if (num_contexts_to_create > domain_attr->max_ep_tx_ctx) {
             BTL_VERBOSE(("cannot create requested %u contexts. (node max=%zu)",
                             module->num_contexts,
                             domain_attr->max_ep_tx_ctx));
             goto fail;
          }
 
+        /* modify the info to let the provider know we are creating x contexts */
         ep_attr->tx_ctx_cnt = num_contexts_to_create;
         ep_attr->rx_ctx_cnt = num_contexts_to_create;
 
@@ -401,10 +402,14 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
                                 num_contexts_to_create);
 
    } else {
+        /* warn the user if they want more than 1 context */
+        if (num_contexts_to_create > 1) {
+            BTL_ERROR(("cannot create %zu contexts as the provider does not support "
+                        "scalable endpoint. Falling back to single context endpoint.",
+                        num_contexts_to_create));
+        }
 
-        BTL_VERBOSE(("%s does not support scalable endpoint. Falling back "
-                     "to single normal endpoint.",
-                        ofi_info->fabric_attr->prov_name));
+        BTL_VERBOSE(("btl/ofi using normal endpoint."));
 
         rc = fi_endpoint(domain, ofi_info, &ep, NULL);
         if (0 != rc) {

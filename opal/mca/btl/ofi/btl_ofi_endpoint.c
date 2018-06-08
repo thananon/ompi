@@ -71,6 +71,11 @@ int ofi_comp_list_init(opal_free_list_t *comp_list)
     return OPAL_SUCCESS;
 }
 
+/* mca_btl_ofi_context_alloc_normal()
+ *
+ * This function will allocate an ofi_context, map the endpoint to tx/rx context,
+ * bind CQ,AV to the endpoint and initialize all the structure.
+ * USE WITH NORMAL ENDPOINT ONLY */
 mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_normal(struct fi_info *info,
                                                         struct fid_domain *domain,
                                                         struct fid_ep *ep,
@@ -133,18 +138,17 @@ single_fail:
     return NULL;
 }
 
-/* This function allocate communication contexts and return the pointer
- * to the first btl context */
+/* mca_btl_ofi_context_alloc_scalable()
+ *
+ * This function allocate communication contexts and return the pointer
+ * to the first btl context. It also take care of all the bindings needed.
+ * USE WITH SCALABLE ENDPOINT ONLY */
 mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_scalable(struct fi_info *info,
                                                           struct fid_domain *domain,
                                                           struct fid_ep *sep,
                                                           struct fid_av *av,
                                                           size_t num_contexts)
 {
-    assert(info);
-    assert(domain);
-    assert(num_contexts > 0);
-
     BTL_VERBOSE(("creating %zu contexts", num_contexts));
 
     int rc;
@@ -155,14 +159,13 @@ mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_scalable(struct fi_info *info,
     struct fi_tx_attr tx_attr = {0};
     struct fi_rx_attr rx_attr = {0};
 
-       mca_btl_ofi_context_t *contexts;
+    mca_btl_ofi_context_t *contexts;
 
     contexts = (mca_btl_ofi_context_t*) calloc(num_contexts, sizeof(*contexts));
     if (NULL == contexts) {
         BTL_VERBOSE(("cannot allocate communication contexts."));
         return NULL;
     }
-
 
      /* bind AV to endpoint */
     rc = fi_scalable_ep_bind(sep, (fid_t)av, 0);
@@ -238,10 +241,9 @@ scalable_fail:
     return NULL;
 }
 
-/* this function will close everything in the context and destroy comp_list.
- * Note that we dont close the endpoint here. */
 void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_ep) {
 
+    /* if it is a scalable ep, we have to close all contexts. */
     if (scalable_ep) {
         if (NULL != context->tx_ctx) {
             fi_close(&context->tx_ctx->fid);
@@ -256,10 +258,13 @@ void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_
         fi_close(&context->cq->fid);
     }
 
+    /* Can we destruct the object that hasn't been constructed? */
     OBJ_DESTRUCT(&context->lock);
     OBJ_DESTRUCT(&context->comp_list);
 }
 
+/* Get a context to use for communication.
+ * The logic to assign the context goes here. */
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 {
     static int cur_num = 0;
