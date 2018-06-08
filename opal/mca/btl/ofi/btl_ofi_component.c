@@ -42,6 +42,8 @@ static char *prov_exclude;
 static char *ofi_progress_mode;
 static int mca_btl_ofi_init_device(struct fi_info *info);
 
+__thread mca_btl_ofi_context_t *my_context = NULL;
+
 /* validate information returned from fi_getinfo().
  * return OPAL_ERROR if we dont have what we need. */
 static int validate_info(struct fi_info *info)
@@ -158,7 +160,6 @@ static int mca_btl_ofi_component_open(void)
     mca_btl_ofi_component.module_count = 0;
     return OPAL_SUCCESS;
 }
-
 
 /*
  * component cleanup - sanity checking of queue lengths
@@ -464,6 +465,7 @@ static int mca_btl_ofi_init_device(struct fi_info *info)
 
     /* create endpoint list */
     OBJ_CONSTRUCT(&module->endpoints, opal_list_t);
+    OBJ_CONSTRUCT(&module->module_lock, opal_mutex_t);
 
     /* create and send the modex for this device */
     namelen = sizeof(ep_name);
@@ -534,12 +536,23 @@ static int mca_btl_ofi_component_progress (void)
     for (int i = 0 ; i < mca_btl_ofi_component.module_count ; ++i) {
         mca_btl_ofi_module_t *module = mca_btl_ofi_component.modules[i];
 
-        for (int j = 0 ; j < module->num_contexts ; j++ ) {
-            context = &module->contexts[j];
+        /* progress context we own first. */
+        context = get_ofi_context(module);
 
-            if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
-                events += mca_btl_ofi_context_progress(&module->contexts[j]);
-                OPAL_THREAD_UNLOCK(&context->lock);
+        if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
+            events += mca_btl_ofi_context_progress(context);
+            OPAL_THREAD_UNLOCK(&context->lock);
+        }
+
+        /* if there is nothing to do, try progress other's. */
+        if (events == 0) {
+            for (int j = 0 ; j < module->num_contexts ; j++ ) {
+
+                context = &module->contexts[j];
+                if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
+                    events += mca_btl_ofi_context_progress(&module->contexts[j]);
+                    OPAL_THREAD_UNLOCK(&context->lock);
+                }
             }
         }
     }

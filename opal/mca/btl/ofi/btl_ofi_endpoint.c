@@ -265,8 +265,17 @@ void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_
 
 /* Get a context to use for communication.
  * The logic to assign the context goes here. */
+
+volatile int64_t cur_num = 0;
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 {
-    static int cur_num = 0;
-    return &btl->contexts[cur_num++%btl->num_contexts];
+    if (OPAL_UNLIKELY(my_context == NULL)) {
+        OPAL_THREAD_LOCK(&btl->module_lock);
+        my_context = &btl->contexts[cur_num];
+        cur_num = (cur_num + 1) %btl->num_contexts;
+        OPAL_THREAD_UNLOCK(&btl->module_lock);
+    }
+
+    assert (my_context);
+    return my_context;
 }

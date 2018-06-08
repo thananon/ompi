@@ -81,6 +81,8 @@ struct mca_btl_ofi_context_t {
 };
 typedef struct mca_btl_ofi_context_t mca_btl_ofi_context_t;
 
+extern __thread mca_btl_ofi_context_t *my_context;
+
 /**
  * @brief OFI BTL module
  */
@@ -105,14 +107,13 @@ struct mca_btl_ofi_module_t {
     bool use_virt_addr;
     bool is_scalable_ep;
 
-    /** spin-lock to protect the module */
-    volatile int32_t lock;
-
     int64_t outstanding_rdma;
 
     /** linked list of BTL endpoints. this list is never searched so
      * there is no need for a complicated structure here at this time*/
     opal_list_t endpoints;
+
+    opal_mutex_t module_lock;
 
     /** registration cache */
     mca_rcache_base_module_t *rcache;
