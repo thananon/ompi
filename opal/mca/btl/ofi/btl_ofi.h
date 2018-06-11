@@ -81,8 +81,6 @@ struct mca_btl_ofi_context_t {
 };
 typedef struct mca_btl_ofi_context_t mca_btl_ofi_context_t;
 
-extern __thread mca_btl_ofi_context_t *my_context;
-
 /**
  * @brief OFI BTL module
  */

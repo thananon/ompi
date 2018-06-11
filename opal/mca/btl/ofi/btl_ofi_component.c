@@ -42,8 +42,6 @@ static char *prov_exclude;
 static char *ofi_progress_mode;
 static int mca_btl_ofi_init_device(struct fi_info *info);
 
-__thread mca_btl_ofi_context_t *my_context = NULL;
-
 /* validate information returned from fi_getinfo().
  * return OPAL_ERROR if we dont have what we need. */
 static int validate_info(struct fi_info *info)

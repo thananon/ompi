@@ -15,6 +15,10 @@
 #include "btl_ofi_endpoint.h"
 #include "opal/util/proc.h"
 
+#if OPAL_C_HAVE__THREAD_LOCAL
+_Thread_local  mca_btl_ofi_context_t *my_context = NULL;
+#endif
+
 static void mca_btl_ofi_endpoint_construct (mca_btl_ofi_endpoint_t *endpoint)
 {
     endpoint->peer_addr = 0;
@@ -269,13 +273,23 @@ void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_
 volatile int64_t cur_num = 0;
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 {
+
+#if OPAL_C_HAVE__THREAD_LOCAL
+    /* With TLS, we cache the context we use. */
     if (OPAL_UNLIKELY(my_context == NULL)) {
         OPAL_THREAD_LOCK(&btl->module_lock);
+
         my_context = &btl->contexts[cur_num];
         cur_num = (cur_num + 1) %btl->num_contexts;
+
         OPAL_THREAD_UNLOCK(&btl->module_lock);
     }
 
     assert (my_context);
     return my_context;
+
+#else
+    /* No TLS, just assign the context round-robinly. */
+    return &btl->contexts[cur_num++ % btl->num_contexts];
+#endif
 }

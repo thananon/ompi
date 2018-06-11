@@ -30,6 +30,10 @@
 
 BEGIN_C_DECLS
 
+#if OPAL_C_HAVE__THREAD_LOCAL
+extern _Thread_local mca_btl_ofi_context_t *my_context;
+#endif
+
 struct mca_btl_base_endpoint_t {
     opal_list_item_t super;
 
