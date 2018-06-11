@@ -572,10 +572,10 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
 
     if (0 < ret) {
         events_read = ret;
-        for (int j = 0; j < events_read; j++) {
-            if (NULL != cq_entry[j].op_context) {
+        for (int i = 0; i < events_read; i++) {
+            if (NULL != cq_entry[i].op_context) {
                 ++events;
-                comp = (mca_btl_ofi_completion_t*) cq_entry[j].op_context;
+                comp = (mca_btl_ofi_completion_t*) cq_entry[i].op_context;
                 mca_btl_ofi_module_t *ofi_btl = (mca_btl_ofi_module_t*)comp->btl;
 
                 switch (comp->type) {
@@ -616,12 +616,10 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
             BTL_ERROR(("fi_cq_readerr: (provider err_code = %d)\n",
                        cqerr.prov_errno));
         }
-
         MCA_BTL_OFI_ABORT();
-
     }
 #ifdef FI_EINTR
-    /* sometimes, sockets provider complain about interupt. */
+    /* sometimes, sockets provider complain about interupt. We do nothing. */
     else if (OPAL_UNLIKELY(ret == -FI_EINTR)) {
 
     }
@@ -633,7 +631,6 @@ int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context) {
     }
 
     return events;
-
 }
 
 /** OFI btl component */
