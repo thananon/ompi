@@ -520,7 +520,6 @@ fail:
     return OPAL_ERR_OUT_OF_RESOURCE;
 }
 
-int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context);
 /**
  * @brief OFI BTL progress function
  *
@@ -537,19 +536,26 @@ static int mca_btl_ofi_component_progress (void)
         /* progress context we own first. */
         context = get_ofi_context(module);
 
-        if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
+        if (mca_btl_ofi_context_trylock(context)) {
             events += mca_btl_ofi_context_progress(context);
-            OPAL_THREAD_UNLOCK(&context->lock);
+            mca_btl_ofi_context_unlock(context);
         }
 
         /* if there is nothing to do, try progress other's. */
         if (events == 0) {
             for (int j = 0 ; j < module->num_contexts ; j++ ) {
 
-                context = &module->contexts[j];
-                if (!OPAL_THREAD_TRYLOCK(&context->lock)) {
-                    events += mca_btl_ofi_context_progress(&module->contexts[j]);
-                    OPAL_THREAD_UNLOCK(&context->lock);
+                context = get_ofi_context_rr(module);
+
+                if (mca_btl_ofi_context_trylock(context)) {
+                    events += mca_btl_ofi_context_progress(context);
+                    mca_btl_ofi_context_unlock(context);
+                }
+
+                /* If we did something, good enough. return now.
+                 * This is crucial for performance/latency. */
+                if (events > 0) {
+                    break;
                 }
             }
         }

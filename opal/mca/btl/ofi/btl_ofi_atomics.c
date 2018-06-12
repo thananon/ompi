@@ -81,6 +81,9 @@ int mca_btl_ofi_afop (struct mca_btl_base_module_t *btl, struct mca_btl_base_end
 
     MCA_BTL_OFI_NUM_RDMA_INC(ofi_btl);
 
+    /* force a bit of progress. */
+    mca_btl_ofi_component.super.btl_progress();
+
     return OPAL_SUCCESS;
 }
 
@@ -132,6 +135,7 @@ int mca_btl_ofi_aop (struct mca_btl_base_module_t *btl, mca_btl_base_endpoint_t 
     }
 
     MCA_BTL_OFI_NUM_RDMA_INC(ofi_btl);
+    mca_btl_ofi_component.super.btl_progress();
 
     return OPAL_SUCCESS;
 }
@@ -187,6 +191,9 @@ int mca_btl_ofi_acswap (struct mca_btl_base_module_t *btl, struct mca_btl_base_e
     }
 
     MCA_BTL_OFI_NUM_RDMA_INC(ofi_btl);
+
+    /* force a bit of progress. */
+    mca_btl_ofi_component.super.btl_progress();
 
     return OPAL_SUCCESS;
 }

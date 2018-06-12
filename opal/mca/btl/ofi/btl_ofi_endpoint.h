@@ -30,9 +30,13 @@
 
 BEGIN_C_DECLS
 
+#if USE_TLS
 #if OPAL_C_HAVE__THREAD_LOCAL
 extern _Thread_local mca_btl_ofi_context_t *my_context;
-#endif
+#else
+extern __thread mca_btl_ofi_context_t *my_context;
+#endif /* OPAL_C_HAVE__THREAD_LOCAL */
+#endif /* USE_TLS */
 
 struct mca_btl_base_endpoint_t {
     opal_list_item_t super;
@@ -69,7 +73,7 @@ mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_normal(struct fi_info *info,
 void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_ep);
 
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl);
-
+mca_btl_ofi_context_t *get_ofi_context_rr(mca_btl_ofi_module_t *btl);
 
 END_C_DECLS
 #endif

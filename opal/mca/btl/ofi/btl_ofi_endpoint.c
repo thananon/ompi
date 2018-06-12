@@ -15,9 +15,13 @@
 #include "btl_ofi_endpoint.h"
 #include "opal/util/proc.h"
 
+#if USE_TLS
 #if OPAL_C_HAVE__THREAD_LOCAL
-_Thread_local  mca_btl_ofi_context_t *my_context = NULL;
-#endif
+_Thread_local mca_btl_ofi_context_t *my_context = NULL;
+#else
+__thread  mca_btl_ofi_context_t *my_context = NULL;
+#endif /* OPAL_C_HAVE__THREAD_LOCAL */
+#endif /* USE_TLS */
 
 static void mca_btl_ofi_endpoint_construct (mca_btl_ofi_endpoint_t *endpoint)
 {
@@ -129,7 +133,6 @@ mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_normal(struct fi_info *info,
     }
 
     (void) ofi_comp_list_init(&context->comp_list);
-    OBJ_CONSTRUCT(&context->lock, opal_mutex_t);
 
     context->tx_ctx = ep;
     context->rx_ctx = ep;
@@ -230,7 +233,6 @@ mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_scalable(struct fi_info *info,
         contexts[i].context_id = i;
 
         ofi_comp_list_init(&contexts[i].comp_list);
-        OBJ_CONSTRUCT(&contexts[i].lock, opal_mutex_t);
     }
 
     return contexts;
@@ -263,19 +265,18 @@ void mca_btl_ofi_context_finalize(mca_btl_ofi_context_t *context, bool scalable_
     }
 
     /* Can we destruct the object that hasn't been constructed? */
-    OBJ_DESTRUCT(&context->lock);
     OBJ_DESTRUCT(&context->comp_list);
 }
 
 /* Get a context to use for communication.
- * The logic to assign the context goes here. */
-
-volatile int64_t cur_num = 0;
+ * If TLS is supported, it will use the cached endpoint.
+ * If not, it will invoke the normal round-robin assignment. */
 mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 {
-
-#if OPAL_C_HAVE__THREAD_LOCAL
+#if USE_TLS
     /* With TLS, we cache the context we use. */
+    static volatile int64_t cur_num = 0;
+
     if (OPAL_UNLIKELY(my_context == NULL)) {
         OPAL_THREAD_LOCK(&btl->module_lock);
 
@@ -287,9 +288,15 @@ mca_btl_ofi_context_t *get_ofi_context(mca_btl_ofi_module_t *btl)
 
     assert (my_context);
     return my_context;
-
 #else
-    /* No TLS, just assign the context round-robinly. */
-    return &btl->contexts[cur_num++ % btl->num_contexts];
+    return get_ofi_context_rr(btl);
 #endif
+}
+
+/* return the context in a round-robin. */
+/* There is no need for atomics here as it might hurt the performance. */
+mca_btl_ofi_context_t *get_ofi_context_rr(mca_btl_ofi_module_t *btl)
+{
+    static volatile uint64_t rr_num = 0;
+    return &btl->contexts[rr_num++%btl->num_contexts];
 }

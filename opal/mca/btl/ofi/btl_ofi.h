@@ -46,10 +46,9 @@
 #include <rdma/fi_rma.h>
 
 BEGIN_C_DECLS
-
-#define MCA_BTL_OFI_MAX_MODULES 16
-#define MCA_BTL_OFI_MAX_WORKERS 1
+#define MCA_BTL_OFI_MAX_MODULES         16
 #define MCA_BTL_OFI_MAX_CQ_READ_ENTRIES 128
+#define USE_TLS                         1
 
 #define MCA_BTL_OFI_ABORT(args)     mca_btl_ofi_exit(args)
 
@@ -77,7 +76,8 @@ struct mca_btl_ofi_context_t {
      * on the freelist. Things can get really slow. */
     opal_free_list_t comp_list;
 
-    opal_mutex_t lock;
+    /* for thread locking */
+    volatile int32_t lock;
 };
 typedef struct mca_btl_ofi_context_t mca_btl_ofi_context_t;
 
@@ -289,7 +289,25 @@ int mca_btl_ofi_reg_mem (void *reg_data, void *base, size_t size,
                          mca_rcache_base_registration_t *reg);
 int mca_btl_ofi_dereg_mem (void *reg_data, mca_rcache_base_registration_t *reg);
 
+int mca_btl_ofi_context_progress(mca_btl_ofi_context_t *context);
 void mca_btl_ofi_exit(void);
+
+/* thread atomics */
+static inline bool mca_btl_ofi_context_trylock (mca_btl_ofi_context_t *context)
+{
+    return (context->lock || OPAL_ATOMIC_SWAP_32(&context->lock, 1));
+}
+
+static inline void mca_btl_ofi_context_lock(mca_btl_ofi_context_t *context)
+{
+    while (mca_btl_ofi_context_trylock(context));
+}
+
+static inline void mca_btl_ofi_context_unlock(mca_btl_ofi_context_t *context)
+{
+    opal_atomic_mb();
+    context->lock = 0;
+}
 
 END_C_DECLS
 #endif
