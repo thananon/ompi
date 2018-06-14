@@ -229,6 +229,15 @@ mca_btl_ofi_context_t *mca_btl_ofi_context_alloc_scalable(struct fi_info *info,
             goto scalable_fail;
         }
 
+        rc = fi_enable(contexts[i].tx_ctx);
+        if (0 != rc) {
+            BTL_VERBOSE(("%s failed fi_enable with err=%s",
+                            linux_device_name,
+                            fi_strerror(-rc)
+                            ));
+            goto scalable_fail;
+        }
+
          /* assign the id */
         contexts[i].context_id = i;
 
