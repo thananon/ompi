@@ -28,6 +28,7 @@
 #define MCA_PML_OB1_RECVFRAG_H
 
 #include "pml_ob1_hdr.h"
+#include "pml_ob1_recvreq.h"
 
 BEGIN_C_DECLS
 
@@ -37,6 +38,13 @@ struct mca_pml_ob1_buffer_t {
 };
 typedef struct mca_pml_ob1_buffer_t mca_pml_ob1_buffer_t;
 
+struct mca_pml_ob1_match_args_t {
+    mca_btl_base_descriptor_t *des;
+    mca_pml_ob1_recv_request_t *match;
+    mca_btl_base_segment_t *segments;
+    mca_pml_ob1_match_hdr_t *hdr;
+};
+typedef struct mca_pml_ob1_match_args_t mca_pml_ob1_match_args_t;
 
 struct mca_pml_ob1_recv_frag_t {
     opal_free_list_item_t super;
@@ -182,5 +190,6 @@ void append_frag_to_ordered_list(mca_pml_ob1_recv_frag_t** queue,
 extern void mca_pml_ob1_dump_cant_match(mca_pml_ob1_recv_frag_t* queue);
 END_C_DECLS
 
+void mca_pml_ob1_handle_match_task(void *args);
 #endif
 

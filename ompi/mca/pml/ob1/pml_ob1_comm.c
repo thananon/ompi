@@ -25,7 +25,7 @@
 #include "pml_ob1.h"
 #include "pml_ob1_comm.h"
 
-
+#include "opal/class/opal_task.h"
 
 static void mca_pml_ob1_comm_proc_construct(mca_pml_ob1_comm_proc_t* proc)
 {
@@ -68,6 +68,13 @@ static void mca_pml_ob1_comm_construct(mca_pml_ob1_comm_t* comm)
 #endif
     OBJ_CONSTRUCT(&comm->matching_lock, opal_mutex_t);
     OBJ_CONSTRUCT(&comm->proc_lock, opal_mutex_t);
+
+    OBJ_CONSTRUCT(&comm->taskpool, opal_free_list_t);
+    (void) opal_free_list_init (&comm->taskpool, sizeof (opal_task_t),
+                                opal_cache_line_size, OBJ_CLASS(opal_task_t),
+                                0, opal_cache_line_size, 512, -1, 512, NULL, 0,
+                                NULL, NULL, NULL);
+
     comm->recv_sequence = 0;
     comm->procs = NULL;
     comm->last_probed = 0;

@@ -66,7 +66,7 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
                 if(task) {
                     //printf("helper popped %x my count = %d\n", task, sync->count);
                     (task->func)(task->args);
-                    free(task);
+                    opal_free_list_return(&task->my_list, (opal_list_item_t*) task);
                 }
             } else {
                // sleep(1);
@@ -103,7 +103,7 @@ int ompi_sync_wait_mt(ompi_wait_sync_t *sync)
                 if(task) {
                     //printf("master popped %x my count = %d\n", task,sync->count);
                     (task->func)(task->args);
-                    free(task);
+                    opal_free_list_return(&task->my_list, (opal_list_item_t*) task);
                 } else {
                     //printf("master list empty my count = %d\n",sync->count);
                     break;

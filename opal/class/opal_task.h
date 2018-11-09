@@ -3,6 +3,7 @@
 
 #include "opal_config.h"
 #include "opal/class/opal_fifo.h"
+#include "opal/class/opal_free_list.h"
 
 BEGIN_C_DECLS
 
@@ -12,7 +13,7 @@ struct opal_task_t {
     int32_t count;
     void (*func)(void*);
     void *args;
-
+    opal_free_list_t *my_list;
 };
 
 typedef struct opal_task_t opal_task_t;

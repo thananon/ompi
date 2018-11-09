@@ -3180,144 +3180,6 @@ void mca_btl_openib_frag_progress_pending_put_get(mca_btl_base_endpoint_t *ep,
     }
 }
 
-void btl_openib_handle_incoming_cb(void *c_args)
-{
-    /* read the args. */
-    handle_cb_args_t *args = (handle_cb_args_t*) c_args;
-    mca_btl_openib_module_t *openib_btl = args->btl;
-    mca_btl_openib_endpoint_t *ep = args->endpoint;
-    mca_btl_openib_recv_frag_t *frag = args->frag;
-    size_t byte_len = args->len;
-
-    /* now free it.*/
-    free(c_args);
-
-    mca_btl_base_descriptor_t *des = &to_base_frag(frag)->base;
-    mca_btl_openib_header_t *hdr = frag->hdr;
-    int rqp = to_base_frag(frag)->base.order, cqp;
-    uint16_t rcredits = 0, credits;
-    bool is_credit_msg;
-
-    if(ep->nbo) {
-        BTL_OPENIB_HEADER_NTOH(*hdr);
-    }
-
-    /* advance the segment address past the header and subtract from the
-     * length.*/
-    des->des_segments->seg_len = byte_len - sizeof(mca_btl_openib_header_t);
-
-    if(OPAL_LIKELY(!(is_credit_msg = is_credit_message(frag)))) {
-        /* call registered callback */
-        mca_btl_active_message_callback_t* reg;
-
-#if OPAL_CUDA_SUPPORT /* CUDA_ASYNC_RECV */
-        /* The COPY_ASYNC flag should not be set */
-        assert(0 == (des->des_flags & MCA_BTL_DES_FLAGS_CUDA_COPY_ASYNC));
-#endif /* OPAL_CUDA_SUPPORT */
-        reg = mca_btl_base_active_message_trigger + hdr->tag;
-        reg->cbfunc( &openib_btl->super, hdr->tag, des, reg->cbdata );
-#if OPAL_CUDA_SUPPORT /* CUDA_ASYNC_RECV */
-        if (des->des_flags & MCA_BTL_DES_FLAGS_CUDA_COPY_ASYNC) {
-            /* Since ASYNC flag is set, we know this descriptor is being used
-             * for asynchronous copy and cannot be freed yet. Therefore, set
-             * up callback for PML to call when complete, add argument into
-             * descriptor and return. */
-            des->des_cbfunc = btl_openib_handle_incoming_completion;
-            to_in_frag(des)->endpoint = ep;
-            return OPAL_SUCCESS;
-        }
-#endif /* OPAL_CUDA_SUPPORT */
-        if(MCA_BTL_OPENIB_RDMA_FRAG(frag)) {
-            cqp = (hdr->credits >> 11) & 0x0f;
-            hdr->credits &= 0x87ff;
-        } else {
-            cqp = rqp;
-        }
-        if(BTL_OPENIB_IS_RDMA_CREDITS(hdr->credits)) {
-            rcredits = BTL_OPENIB_CREDITS(hdr->credits);
-            hdr->credits = 0;
-        }
-    } else {
-        mca_btl_openib_rdma_credits_header_t *chdr =
-            (mca_btl_openib_rdma_credits_header_t *) des->des_segments->seg_addr.pval;
-        if(ep->nbo) {
-            BTL_OPENIB_RDMA_CREDITS_HEADER_NTOH(*chdr);
-        }
-        cqp = chdr->qpn;
-        rcredits = chdr->rdma_credits;
-    }
-
-    credits = hdr->credits;
-
-    if(hdr->cm_seen)
-         OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.cm_sent, -hdr->cm_seen);
-
-    /* Now return fragment. Don't touch hdr after this point! */
-    if(MCA_BTL_OPENIB_RDMA_FRAG(frag)) {
-        mca_btl_openib_eager_rdma_local_t *erl = &ep->eager_rdma_local;
-        OPAL_THREAD_LOCK(&erl->lock);
-        MCA_BTL_OPENIB_RDMA_MAKE_REMOTE(frag->ftr);
-        while(erl->tail != erl->head) {
-            mca_btl_openib_recv_frag_t *tf;
-            tf = MCA_BTL_OPENIB_GET_LOCAL_RDMA_FRAG(ep, erl->tail);
-            if(MCA_BTL_OPENIB_RDMA_FRAG_LOCAL(tf))
-                break;
-            OPAL_THREAD_ADD_FETCH32(&erl->credits, 1);
-            MCA_BTL_OPENIB_RDMA_NEXT_INDEX(erl->tail);
-        }
-        OPAL_THREAD_UNLOCK(&erl->lock);
-    } else {
-        if (is_cts_message(frag)) {
-            /* If this was a CTS, free it here (it was
-               malloc'ed+ibv_reg_mr'ed -- so it should *not* be
-               FRAG_RETURN'ed). */
-            int rc = opal_btl_openib_connect_base_free_cts(ep);
-            if (OPAL_SUCCESS != rc) {
-                return rc;
-            }
-        } else {
-            /* Otherwise, FRAG_RETURN it and repost if necessary */
-            MCA_BTL_IB_FRAG_RETURN(frag);
-            if (BTL_OPENIB_QP_TYPE_PP(rqp)) {
-                if (OPAL_UNLIKELY(is_credit_msg)) {
-                    OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.cm_received, 1);
-                } else {
-                    OPAL_THREAD_ADD_FETCH32(&ep->qps[rqp].u.pp_qp.rd_posted, -1);
-                }
-                mca_btl_openib_endpoint_post_rr(ep, cqp);
-            } else {
-                mca_btl_openib_module_t *btl = ep->endpoint_btl;
-                OPAL_THREAD_ADD_FETCH32(&btl->qps[rqp].u.srq_qp.rd_posted, -1);
-                mca_btl_openib_post_srr(btl, rqp);
-            }
-        }
-    }
-
-    assert((cqp != MCA_BTL_NO_ORDER && BTL_OPENIB_QP_TYPE_PP(cqp)) || !credits);
-
-    /* If we got any credits (RDMA or send), then try to progress all
-       the no_credits_pending_frags lists */
-    if (rcredits > 0) {
-        OPAL_THREAD_ADD_FETCH32(&ep->eager_rdma_remote.tokens, rcredits);
-    }
-    if (credits > 0) {
-        OPAL_THREAD_ADD_FETCH32(&ep->qps[cqp].u.pp_qp.sd_credits, credits);
-    }
-    if (rcredits + credits > 0) {
-        int rc;
-
-        if (OPAL_SUCCESS !=
-            (rc = progress_no_credits_pending_frags(ep))) {
-            return rc;
-        }
-    }
-
-    send_credits(ep, cqp);
-
-    return OPAL_SUCCESS;
-}
-
-
 static int btl_openib_handle_incoming(mca_btl_openib_module_t *openib_btl,
                                          mca_btl_openib_endpoint_t *ep,
                                          mca_btl_openib_recv_frag_t *frag,
@@ -3769,27 +3631,12 @@ static void handle_wc(mca_btl_openib_device_t* device, const uint32_t cq,
             OPAL_OUTPUT((-1, "Got WC: RDMA_RECV, qp %d, src qp %d, WR ID %" PRIx64,
                          wc->qp_num, wc->src_qp, wc->wr_id));
 
-            if(opal_using_threads()) {
-                /* create recv processing task and let someone do it. */
-                opal_task_t *task = OBJ_NEW(opal_task_t);
-
-                handle_cb_args_t *cb_args = (handle_cb_args_t*) malloc(sizeof(handle_cb_args_t));
-                cb_args->btl = openib_btl;
-                cb_args->endpoint = endpoint;
-                cb_args->frag = to_recv_frag(frag);
-                cb_args->len = wc->byte_len;
-                task->func = &btl_openib_handle_incoming_cb;
-                task->args = cb_args;
-
-                opal_task_push(&opal_task_queue, task);
-            } else {
-                /* Process a RECV */
-                if(btl_openib_handle_incoming(openib_btl, endpoint, to_recv_frag(frag),
-                            wc->byte_len) != OPAL_SUCCESS) {
-                    openib_btl->error_cb(&openib_btl->super, MCA_BTL_ERROR_FLAGS_FATAL,
-                                         NULL, NULL);
-                    break;
-                }
+            /* Process a RECV */
+            if(btl_openib_handle_incoming(openib_btl, endpoint, to_recv_frag(frag),
+                        wc->byte_len) != OPAL_SUCCESS) {
+                openib_btl->error_cb(&openib_btl->super, MCA_BTL_ERROR_FLAGS_FATAL,
+                                     NULL, NULL);
+                break;
             }
 
             /* decide if it is time to setup an eager rdma channel */

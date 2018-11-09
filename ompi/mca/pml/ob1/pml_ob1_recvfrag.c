@@ -35,6 +35,7 @@
 #include "opal/class/opal_list.h"
 #include "opal/threads/mutex.h"
 #include "opal/prefetch.h"
+#include "opal/class/opal_task.h"
 
 #include "ompi/constants.h"
 #include "ompi/communicator/communicator.h"
@@ -397,7 +398,7 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
      * the fragment.
      */
     OB1_MATCHING_LOCK(&comm->matching_lock);
-
+match_this:
     if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
         /* get sequence number of next message that can be processed.
          * If this frag is out of sequence, queue it up in the list
@@ -434,9 +435,70 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
                            hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
 
     /* release matching lock before processing fragment */
-    OB1_MATCHING_UNLOCK(&comm->matching_lock);
+    /** OB1_MATCHING_UNLOCK(&comm->matching_lock); */
 
     if(OPAL_LIKELY(match)) {
+        opal_task_t *task = (opal_task_t*) opal_free_list_get(&comm->taskpool);
+
+        /* FIXME: use mempool. who wants to malloc in critical path? */
+        mca_pml_ob1_match_args_t *args = malloc (sizeof(*args));
+
+        args->match = match;
+        args->segments = segments;
+        args->hdr = hdr;
+        args->des = des;
+
+        assert(task);
+        task->func = &mca_pml_ob1_handle_match_task;
+        task->args = args;
+        task->my_list = &comm->taskpool;
+
+        des->des_flags &= ~MCA_BTL_DES_FLAGS_BTL_OWNERSHIP;
+
+        /** opal_output(0, "match %p des %p task %p seg %p hdr %p",match,des,task,segments->seg_addr.pval, hdr); */
+        opal_task_push(&opal_task_queue, task);
+    }
+
+    /* We matched the frag, Now see if we already have the next sequence in
+     * our OOS list. If yes, try to match it.
+     *
+     * NOTE:
+     * To optimize the number of lock used, mca_pml_ob1_recv_frag_match_proc()
+     * MUST be called with communicator lock and will RELEASE the lock. This is
+     * not ideal but it is better for the performance.
+     */
+    if(NULL != proc->frags_cant_match) {
+        mca_pml_ob1_recv_frag_t* frag;
+
+        /** OB1_MATCHING_LOCK(&comm->matching_lock); */
+        if((frag = check_cantmatch_for_match(proc))) {
+            mca_pml_ob1_recv_frag_match_proc(frag->btl, comm_ptr, proc,
+                                             &frag->hdr.hdr_match,
+                                             frag->segments, frag->num_segments,
+                                             frag->hdr.hdr_match.hdr_common.hdr_type, frag);
+        } else {
+            OB1_MATCHING_UNLOCK(&comm->matching_lock);
+            return;
+        }
+    }
+    OB1_MATCHING_UNLOCK(&comm->matching_lock);
+    return;
+}
+
+void mca_pml_ob1_handle_match_task(void *targs)
+{
+    mca_pml_ob1_match_args_t *args = (mca_pml_ob1_match_args_t *)targs;
+
+    mca_btl_base_descriptor_t *des = args->des;
+    mca_pml_ob1_recv_request_t *match = args->match;
+    mca_btl_base_segment_t* segments = args->segments;
+    mca_pml_ob1_match_hdr_t* hdr = args->hdr;
+
+    /** opal_output(0,"match: %p segments:%p hdr:%p", match, segments->seg_addr.pval, hdr); */
+
+    size_t num_segments = des->des_segment_count;
+    size_t bytes_received = 0;
+
         bytes_received = segments->seg_len - OMPI_PML_OB1_MATCH_HDR_LEN;
         /* We don't need to know the total amount of bytes we just received,
          * but we need to know if there is any data in this message. The
@@ -490,34 +552,9 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
         /* no need to check if complete we know we are.. */
         /*  don't need a rmb as that is for checking */
         recv_request_pml_complete(match);
-    }
 
-    /* We matched the frag, Now see if we already have the next sequence in
-     * our OOS list. If yes, try to match it.
-     *
-     * NOTE:
-     * To optimize the number of lock used, mca_pml_ob1_recv_frag_match_proc()
-     * MUST be called with communicator lock and will RELEASE the lock. This is
-     * not ideal but it is better for the performance.
-     */
-    if(NULL != proc->frags_cant_match) {
-        mca_pml_ob1_recv_frag_t* frag;
-
-        OB1_MATCHING_LOCK(&comm->matching_lock);
-        if((frag = check_cantmatch_for_match(proc))) {
-            /* mca_pml_ob1_recv_frag_match_proc() will release the lock. */
-            mca_pml_ob1_recv_frag_match_proc(frag->btl, comm_ptr, proc,
-                                             &frag->hdr.hdr_match,
-                                             frag->segments, frag->num_segments,
-                                             frag->hdr.hdr_match.hdr_common.hdr_type, frag);
-        } else {
-            OB1_MATCHING_UNLOCK(&comm->matching_lock);
-        }
-    }
-
-    return;
+        /** free(args); */
 }
-
 
 void mca_pml_ob1_recv_frag_callback_rndv(mca_btl_base_module_t* btl,
                                          mca_btl_base_tag_t tag,
@@ -1055,7 +1092,7 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
      * may now be used to form new matchs
      */
     if(OPAL_UNLIKELY(NULL != proc->frags_cant_match)) {
-        OB1_MATCHING_LOCK(&comm->matching_lock);
+        /** OB1_MATCHING_LOCK(&comm->matching_lock); */
         if((frag = check_cantmatch_for_match(proc))) {
             hdr = &frag->hdr.hdr_match;
             segments = frag->segments;
@@ -1064,7 +1101,7 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
             type = hdr->hdr_common.hdr_type;
             goto match_this_frag;
         }
-        OB1_MATCHING_UNLOCK(&comm->matching_lock);
+        /** OB1_MATCHING_UNLOCK(&comm->matching_lock); */
     }
 
     return OMPI_SUCCESS;

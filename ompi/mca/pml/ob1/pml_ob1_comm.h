@@ -73,6 +73,7 @@ struct mca_pml_comm_t {
     custom_match_prq* prq;
     custom_match_umq* umq;
 #endif
+    opal_free_list_t taskpool;
 };
 typedef struct mca_pml_comm_t mca_pml_ob1_comm_t;
 
