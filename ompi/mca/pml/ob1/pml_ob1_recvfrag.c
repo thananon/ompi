@@ -350,6 +350,7 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
     mca_pml_ob1_match_hdr_t* hdr = (mca_pml_ob1_match_hdr_t*)segments->seg_addr.pval;
     ompi_communicator_t *comm_ptr;
     mca_pml_ob1_recv_request_t *match = NULL;
+    mca_pml_ob1_recv_request_t *late_match = NULL;
     mca_pml_ob1_comm_t *comm;
     mca_pml_ob1_comm_proc_t *proc;
     size_t num_segments = des->des_segment_count;
@@ -398,7 +399,6 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
      * the fragment.
      */
     OB1_MATCHING_LOCK(&comm->matching_lock);
-match_this:
     if (!OMPI_COMM_CHECK_ASSERT_ALLOW_OVERTAKE(comm_ptr)) {
         /* get sequence number of next message that can be processed.
          * If this frag is out of sequence, queue it up in the list
@@ -437,28 +437,6 @@ match_this:
     /* release matching lock before processing fragment */
     /** OB1_MATCHING_UNLOCK(&comm->matching_lock); */
 
-    if(OPAL_LIKELY(match)) {
-        opal_task_t *task = (opal_task_t*) opal_free_list_get(&comm->taskpool);
-
-        /* FIXME: use mempool. who wants to malloc in critical path? */
-        mca_pml_ob1_match_args_t *args = malloc (sizeof(*args));
-
-        args->match = match;
-        args->segments = segments;
-        args->hdr = hdr;
-        args->des = des;
-
-        assert(task);
-        task->func = &mca_pml_ob1_handle_match_task;
-        task->args = args;
-        task->my_list = &comm->taskpool;
-
-        des->des_flags &= ~MCA_BTL_DES_FLAGS_BTL_OWNERSHIP;
-
-        /** opal_output(0, "match %p des %p task %p seg %p hdr %p",match,des,task,segments->seg_addr.pval, hdr); */
-        opal_task_push(&opal_task_queue, task);
-    }
-
     /* We matched the frag, Now see if we already have the next sequence in
      * our OOS list. If yes, try to match it.
      *
@@ -467,22 +445,77 @@ match_this:
      * MUST be called with communicator lock and will RELEASE the lock. This is
      * not ideal but it is better for the performance.
      */
-    if(NULL != proc->frags_cant_match) {
-        mca_pml_ob1_recv_frag_t* frag;
+    if(OPAL_LIKELY(match)) {
+        if(NULL != proc->frags_cant_match) {
+            mca_pml_ob1_recv_frag_t* frag;
 
-        /** OB1_MATCHING_LOCK(&comm->matching_lock); */
-        if((frag = check_cantmatch_for_match(proc))) {
-            mca_pml_ob1_recv_frag_match_proc(frag->btl, comm_ptr, proc,
-                                             &frag->hdr.hdr_match,
-                                             frag->segments, frag->num_segments,
-                                             frag->hdr.hdr_match.hdr_common.hdr_type, frag);
-        } else {
-            OB1_MATCHING_UNLOCK(&comm->matching_lock);
-            return;
+            /* If there is something we can match, go and create task. */
+            if((frag = check_cantmatch_for_match(proc))) {
+                mca_pml_ob1_recv_frag_match_proc(frag->btl, comm_ptr, proc,
+                                                 &frag->hdr.hdr_match,
+                                                 frag->segments, frag->num_segments,
+                                                 frag->hdr.hdr_match.hdr_common.hdr_type, frag);
+            }
         }
+
+        /* Now, process our original match */
+        bytes_received = segments->seg_len - OMPI_PML_OB1_MATCH_HDR_LEN;
+
+        /* We don't need to know the total amount of bytes we just received,
+         * but we need to know if there is any data in this message. The
+         * simplest way is to get the extra length from the first segment,
+         * and then add the number of remaining segments.
+         */
+        match->req_recv.req_bytes_packed = bytes_received + (num_segments-1);
+
+        MCA_PML_OB1_RECV_REQUEST_MATCHED(match, hdr);
+        if(match->req_bytes_expected > 0) {
+            struct iovec iov[MCA_BTL_DES_MAX_SEGMENTS];
+            uint32_t iov_count = 1;
+
+            /*
+             *  Make user buffer accessable(defined) before unpacking.
+             */
+            MEMCHECKER(
+                       memchecker_call(&opal_memchecker_base_mem_defined,
+                                       match->req_recv.req_base.req_addr,
+                                       match->req_recv.req_base.req_count,
+                                       match->req_recv.req_base.req_datatype);
+                       );
+
+            iov[0].iov_len = bytes_received;
+            iov[0].iov_base = (IOVBASE_TYPE*)((unsigned char*)segments->seg_addr.pval +
+                                              OMPI_PML_OB1_MATCH_HDR_LEN);
+            while (iov_count < num_segments) {
+                bytes_received += segments[iov_count].seg_len;
+                iov[iov_count].iov_len = segments[iov_count].seg_len;
+                iov[iov_count].iov_base = (IOVBASE_TYPE*)((unsigned char*)segments[iov_count].seg_addr.pval);
+                iov_count++;
+            }
+            opal_convertor_unpack( &match->req_recv.req_base.req_convertor,
+                                   iov,
+                                   &iov_count,
+                                   &bytes_received );
+            match->req_bytes_received = bytes_received;
+            SPC_USER_OR_MPI(match->req_recv.req_base.req_ompi.req_status.MPI_TAG, (ompi_spc_value_t)bytes_received,
+                            OMPI_SPC_BYTES_RECEIVED_USER, OMPI_SPC_BYTES_RECEIVED_MPI);
+            /*
+             *  Unpacking finished, make the user buffer unaccessable again.
+             */
+            MEMCHECKER(
+                       memchecker_call(&opal_memchecker_base_mem_noaccess,
+                                       match->req_recv.req_base.req_addr,
+                                       match->req_recv.req_base.req_count,
+                                       match->req_recv.req_base.req_datatype);
+                       );
+        }
+
+        /* no need to check if complete we know we are.. */
+        /*  don't need a rmb as that is for checking */
+        recv_request_pml_complete(match);
     }
+
     OB1_MATCHING_UNLOCK(&comm->matching_lock);
-    return;
 }
 
 void mca_pml_ob1_handle_match_task(void *targs)
@@ -494,9 +527,10 @@ void mca_pml_ob1_handle_match_task(void *targs)
     mca_btl_base_segment_t* segments = args->segments;
     mca_pml_ob1_match_hdr_t* hdr = args->hdr;
 
-    /** opal_output(0,"match: %p segments:%p hdr:%p", match, segments->seg_addr.pval, hdr); */
+    /** opal_output(0, "des:%p match:%p segments:%p, hdr:%p", args->des, args->match, */
+    /**                 args->segments, args->hdr); */
 
-    size_t num_segments = des->des_segment_count;
+    size_t num_segments = args->num_segments;
     size_t bytes_received = 0;
 
         bytes_received = segments->seg_len - OMPI_PML_OB1_MATCH_HDR_LEN;
@@ -1038,6 +1072,9 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
                                   int type,
                                   mca_pml_ob1_recv_frag_t* frag )
 {
+    opal_task_t *task;
+    mca_pml_ob1_match_args_t *args;
+
     /* local variables */
     mca_pml_ob1_comm_t* comm = (mca_pml_ob1_comm_t *)comm_ptr->c_pml_comm;
     mca_pml_ob1_recv_request_t *match = NULL;
@@ -1066,24 +1103,37 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
     PERUSE_TRACE_MSG_EVENT(PERUSE_COMM_SEARCH_POSTED_Q_END, comm_ptr,
                            hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
 
-    /* release matching lock before processing fragment */
-    OB1_MATCHING_UNLOCK(&comm->matching_lock);
-
     if(OPAL_LIKELY(match)) {
         switch(type) {
         case MCA_PML_OB1_HDR_TYPE_MATCH:
-            mca_pml_ob1_recv_request_progress_match(match, btl, segments, num_segments);
+
+            args = malloc (sizeof(*args));
+            args->match = match;
+            args->segments = frag->segments;
+            args->num_segments = num_segments;
+            args->frag = frag;
+
+            task = (opal_task_t*) opal_free_list_get(&comm->taskpool);
+            task->func = &mca_pml_ob1_recv_request_progress_match_task;
+            task->args = args;
+            task->my_list = &comm->taskpool;
+
+            opal_task_push(&opal_task_queue, task);
+
+            /** mca_pml_ob1_recv_request_progress_match(match, btl, segments, num_segments); */
             break;
         case MCA_PML_OB1_HDR_TYPE_RNDV:
             mca_pml_ob1_recv_request_progress_rndv(match, btl, segments, num_segments);
+            if(OPAL_UNLIKELY(frag))
+                MCA_PML_OB1_RECV_FRAG_RETURN(frag);
             break;
         case MCA_PML_OB1_HDR_TYPE_RGET:
             mca_pml_ob1_recv_request_progress_rget(match, btl, segments, num_segments);
+            if(OPAL_UNLIKELY(frag))
+                MCA_PML_OB1_RECV_FRAG_RETURN(frag);
             break;
         }
 
-        if(OPAL_UNLIKELY(frag))
-            MCA_PML_OB1_RECV_FRAG_RETURN(frag);
     }
 
     /*
@@ -1092,7 +1142,6 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
      * may now be used to form new matchs
      */
     if(OPAL_UNLIKELY(NULL != proc->frags_cant_match)) {
-        /** OB1_MATCHING_LOCK(&comm->matching_lock); */
         if((frag = check_cantmatch_for_match(proc))) {
             hdr = &frag->hdr.hdr_match;
             segments = frag->segments;
@@ -1101,9 +1150,16 @@ mca_pml_ob1_recv_frag_match_proc( mca_btl_base_module_t *btl,
             type = hdr->hdr_common.hdr_type;
             goto match_this_frag;
         }
-        /** OB1_MATCHING_UNLOCK(&comm->matching_lock); */
     }
 
     return OMPI_SUCCESS;
+}
+
+void mca_pml_ob1_recv_request_progress_match_task(void* in)
+{
+    mca_pml_ob1_match_args_t *args = (mca_pml_ob1_match_args_t *) in;
+    mca_pml_ob1_recv_frag_t *frag = args->frag;
+    mca_pml_ob1_recv_request_progress_match(args->match, NULL, args->segments, args->num_segments);
+    MCA_PML_OB1_RECV_FRAG_RETURN(frag);
 }
 

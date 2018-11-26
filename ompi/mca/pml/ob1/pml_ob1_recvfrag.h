@@ -29,6 +29,7 @@
 
 #include "pml_ob1_hdr.h"
 #include "pml_ob1_recvreq.h"
+#include "pml_ob1_recvfrag.h"
 
 BEGIN_C_DECLS
 
@@ -37,14 +38,6 @@ struct mca_pml_ob1_buffer_t {
     void * addr;
 };
 typedef struct mca_pml_ob1_buffer_t mca_pml_ob1_buffer_t;
-
-struct mca_pml_ob1_match_args_t {
-    mca_btl_base_descriptor_t *des;
-    mca_pml_ob1_recv_request_t *match;
-    mca_btl_base_segment_t *segments;
-    mca_pml_ob1_match_hdr_t *hdr;
-};
-typedef struct mca_pml_ob1_match_args_t mca_pml_ob1_match_args_t;
 
 struct mca_pml_ob1_recv_frag_t {
     opal_free_list_item_t super;
@@ -57,6 +50,17 @@ struct mca_pml_ob1_recv_frag_t {
     unsigned char addr[1];
 };
 typedef struct mca_pml_ob1_recv_frag_t mca_pml_ob1_recv_frag_t;
+
+struct mca_pml_ob1_match_args_t {
+    mca_btl_base_descriptor_t *des;
+    mca_pml_ob1_recv_request_t *match;
+    mca_btl_base_segment_t *segments;
+    int num_segments;
+    mca_pml_ob1_match_hdr_t *hdr;
+    mca_pml_ob1_recv_frag_t *frag;
+};
+typedef struct mca_pml_ob1_match_args_t mca_pml_ob1_match_args_t;
+
 
 OBJ_CLASS_DECLARATION(mca_pml_ob1_recv_frag_t);
 
@@ -186,6 +190,8 @@ check_cantmatch_for_match(mca_pml_ob1_comm_proc_t *proc);
 void append_frag_to_ordered_list(mca_pml_ob1_recv_frag_t** queue,
                                  mca_pml_ob1_recv_frag_t* frag,
                                  uint16_t seq);
+
+void mca_pml_ob1_recv_request_progress_match_task(void* in);
 
 extern void mca_pml_ob1_dump_cant_match(mca_pml_ob1_recv_frag_t* queue);
 END_C_DECLS
