@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -DOMPI_PROFILE_LAYER=0
 
-ompidir = $(ompiincludedir)/mpiext
+ompidir = $(ompiincludedir)/ompi/mpiext/sync/c
 
 noinst_LTLIBRARIES = libmpiext_sync_c.la
 ompi_HEADERS = mpiext_sync_c.h
