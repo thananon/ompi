@@ -1,14 +1,18 @@
 typedef struct ompi_mpix_sync_s *MPIX_Sync;
 
 OMPI_DECLSPEC int MPIX_Sync_init(MPIX_Sync *sync);
-OMPI_DECLSPEC void MPIX_Sync_free(MPIX_Sync sync);
+OMPI_DECLSPEC void MPIX_Sync_free(MPIX_Sync *sync);
 
-OMPI_DECLSPEC int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request *requests, int total);
+OMPI_DECLSPEC int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request request, void *completion_data);
 
 OMPI_DECLSPEC int MPIX_Sync_waitall(MPIX_Sync sync);
 OMPI_DECLSPEC int MPIX_Sync_size(MPIX_Sync sync);
 
-OMPI_DECLSPEC int MPIX_Sync_query_completed(MPIX_Sync sync);
-OMPI_DECLSPEC MPI_Request* MPIX_Sync_get_completed(MPIX_Sync sync);
+OMPI_DECLSPEC int MPIX_Sync_probe(MPIX_Sync sync);
+OMPI_DECLSPEC void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status);
 
 OMPI_DECLSPEC void MPIX_Progress(void);
+
+
+extern char mpix_sync_empty;
+#define MPIX_SYNC_EMPTY (void*)(&mpix_sync_empty)

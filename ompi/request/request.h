@@ -76,6 +76,7 @@ typedef int (*ompi_request_start_fn_t)(
     struct ompi_request_t ** requests
 );
 
+
 /*
  * Required function to free the request and any associated resources.
  */
@@ -136,6 +137,9 @@ struct ompi_request_t {
     ompi_request_complete_fn_t req_complete_cb; /**< Called when the request is MPI completed */
     void *req_complete_cb_data;
     ompi_mpi_object_t req_mpi_object;           /**< Pointer to MPI object that created this request */
+
+    /* MPIX_Sync extension */
+    void *usr_cbdata;
 };
 
 /**
@@ -359,6 +363,7 @@ int ompi_request_finalize(void);
  */
 int ompi_request_persistent_noop_create(ompi_request_t **request);
 
+int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req);
 /**
  * Cancel a pending request.
  */
@@ -433,6 +438,9 @@ static inline void ompi_request_wait_completion(ompi_request_t *req)
 static inline int ompi_request_complete(ompi_request_t* request, bool with_signal)
 {
     int rc = 0;
+    // printf("request %p src: %d tag: %d\n", request,
+    //                                        request->req_status.MPI_SOURCE,
+    //                                        request->req_status.MPI_TAG);
 
     if( NULL != request->req_complete_cb) {
         rc = request->req_complete_cb( request );
@@ -447,8 +455,12 @@ static inline int ompi_request_complete(ompi_request_t* request, bool with_signa
                 ompi_wait_sync_t *tmp_sync = (ompi_wait_sync_t *) OPAL_ATOMIC_SWAP_PTR(&request->req_complete,
                                                                                        REQUEST_COMPLETED);
                 /* In the case where another thread concurrently changed the request to REQUEST_PENDING */
-                if( REQUEST_PENDING != tmp_sync )
+                if( REQUEST_PENDING != tmp_sync ){
                     wait_sync_update(tmp_sync, 1, request->req_status.MPI_ERROR);
+
+                    /* MPIX_Sync Extension */
+                    ompi_request_generate_completion(tmp_sync, request);
+                }
             }
         } else
             request->req_complete = REQUEST_COMPLETED;

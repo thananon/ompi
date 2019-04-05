@@ -32,6 +32,7 @@
 #include "ompi/request/request.h"
 #include "ompi/request/request_default.h"
 #include "ompi/constants.h"
+#include "ompi/mpiext/sync/c/mpiext_sync_types.h"
 
 opal_pointer_array_t             ompi_request_f_to_c_table = {{0}};
 ompi_predefined_request_t        ompi_request_null = {{{{{0}}}}};
@@ -208,4 +209,9 @@ int ompi_request_persistent_noop_create(ompi_request_t** request)
 
     *request = req;
     return OMPI_SUCCESS;
+}
+
+int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req)
+{
+    return ompi_mpix_sync_generate_completion((ompi_mpix_sync_t*)sync, req);
 }

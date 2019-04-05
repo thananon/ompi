@@ -29,3 +29,6 @@ AC_DEFUN([OMPI_MPIEXT_sync_CONFIG],[
           [$1],
           [$2])
 ])
+
+# Need initialization
+AC_DEFUN([OMPI_MPIEXT_sync_NEED_INIT], [1])
