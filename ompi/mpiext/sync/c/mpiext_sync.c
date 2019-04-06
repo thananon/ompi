@@ -7,7 +7,11 @@
 #define QUERY_PROGRESS_THRESHOLD    30
 
 char ompi_mpix_sync_empty = 0;
-void *MPIX_SYNC_EMPTY = (void*)&ompi_mpix_sync_empty;
+char ompi_mpix_sync_no_completion_data = 0;
+
+void *MPIX_SYNC_EMPTY               = (void*)&ompi_mpix_sync_empty;
+void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)&ompi_mpix_sync_no_completion_data;
+
 
 int MPIX_Sync_init(MPIX_Sync *sync)
 {
@@ -47,14 +51,20 @@ int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request request, void *completion_data)
 
     req->usr_cbdata = completion_data;
 
-    /* Attach request to sync, if already completed, skip. */
+    /* Attach request to sync, if already completed, generate completion. */
     if( !OPAL_ATOMIC_COMPARE_EXCHANGE_STRONG_PTR(&req->req_complete, &tmp_ptr, sync) ) {
-        if (req->req_complete == REQUEST_COMPLETED) {
-            sync->num_completed++;
-            opal_list_append(&sync->completion_list, (opal_list_item_t*)req);
+        if (REQUEST_COMPLETE(req) &&
+            MPIX_SYNC_NO_COMPLETION_DATA != completion_data) {
+                ompi_mpix_sync_generate_completion(sync, req);
+                return OPAL_SUCCESS;
+        } else {
+            /* Request already attached itself to another sync */
+            /* this should not happen. */
+            return OPAL_ERR_FATAL;
         }
     }
 
+    /* increase the count if attach success. */
     OPAL_THREAD_ADD_FETCH32(&sync->super.count, 1);
     return OPAL_SUCCESS;
 }

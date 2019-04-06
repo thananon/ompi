@@ -65,7 +65,7 @@ static void ompi_request_construct(ompi_request_t* req)
     req->req_f_to_c_index = MPI_UNDEFINED;
     req->req_mpi_object.comm = (struct ompi_communicator_t*) NULL;
 
-    req->usr_cbdata = MPIX_SYNC_EMPTY;
+    req->usr_cbdata = MPIX_SYNC_NO_COMPLETION_DATA;
 }
 
 static void ompi_request_destruct(ompi_request_t* req)
@@ -215,7 +215,7 @@ int ompi_request_persistent_noop_create(ompi_request_t** request)
 
 int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req)
 {
-    if (req->usr_cbdata == MPIX_SYNC_EMPTY)
+    if (req->usr_cbdata == NO_COMPLETION_DATA)
         return OPAL_SUCCESS;
 
     return ompi_mpix_sync_generate_completion((ompi_mpix_sync_t*)sync, req);

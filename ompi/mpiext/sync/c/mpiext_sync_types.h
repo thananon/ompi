@@ -12,6 +12,7 @@
 
 extern char ompi_mpix_sync_empty;
 extern void *MPIX_SYNC_EMPTY;
+extern void *MPIX_SYNC_NO_COMPLETION_DATA;
 
 #define MPIX_SYNC_COMPLETION_OBJECT_RETURN(a)          \
     opal_free_list_return(                             \
