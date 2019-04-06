@@ -10,6 +10,9 @@
 #include "opal/class/opal_free_list.h"
 #include "ompi/request/request.h"
 
+extern char ompi_mpix_sync_empty;
+extern void *MPIX_SYNC_EMPTY;
+
 #define MPIX_SYNC_COMPLETION_OBJECT_RETURN(a)          \
     opal_free_list_return(                             \
             &ompi_mpix_sync_component.completion_pool, \

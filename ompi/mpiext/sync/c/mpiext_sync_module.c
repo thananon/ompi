@@ -1,4 +1,3 @@
-#if 1
 #include "opal/class/opal_free_list.h"
 
 #include "ompi/mpiext/mpiext.h"
@@ -6,15 +5,16 @@
 
 ompi_mpix_sync_component_t ompi_mpix_sync_component;
 
-static void ompi_mpix_sync_completion_construct (ompi_mpix_sync_completion_object_t *sync)
+static void sync_completion_construct (ompi_mpix_sync_completion_object_t *c_obj)
 {
-    sync->cbdata = NULL;
+    c_obj->cbdata = NULL;
+    c_obj->request = NULL;
 }
 
 
 OBJ_CLASS_INSTANCE( ompi_mpix_sync_completion_object_t,
                     opal_free_list_item_t,
-                    NULL,
+                    sync_completion_construct,
                     NULL);
 
 static int sync_init(void)
@@ -36,7 +36,7 @@ static int sync_init(void)
 
 static int sync_finalize(void)
 {
-    /** OBJ_DESTRUCT(&ompi_mpix_sync_component.completion_pool); */
+    OBJ_DESTRUCT(&ompi_mpix_sync_component.completion_pool);
     return OPAL_SUCCESS;
 }
 
@@ -44,5 +44,3 @@ ompi_mpiext_component_t ompi_mpiext_sync = {
     sync_init,
     sync_finalize
 };
-
-#endif

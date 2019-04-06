@@ -13,6 +13,4 @@ OMPI_DECLSPEC void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status);
 
 OMPI_DECLSPEC void MPIX_Progress(void);
 
-
-extern char mpix_sync_empty;
-#define MPIX_SYNC_EMPTY (void*)(&mpix_sync_empty)
+OMPI_DECLSPEC extern void *MPIX_SYNC_EMPTY;
