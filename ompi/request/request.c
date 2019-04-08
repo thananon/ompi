@@ -215,8 +215,9 @@ int ompi_request_persistent_noop_create(ompi_request_t** request)
 
 int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req)
 {
-    if (req->usr_cbdata == NO_COMPLETION_DATA)
+    if (req->usr_cbdata == 0xdeaddead) {
         return OPAL_SUCCESS;
+    }
 
     return ompi_mpix_sync_generate_completion((ompi_mpix_sync_t*)sync, req);
 }

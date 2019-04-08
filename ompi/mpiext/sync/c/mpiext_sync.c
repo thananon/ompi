@@ -10,7 +10,8 @@ char ompi_mpix_sync_empty = 0;
 char ompi_mpix_sync_no_completion_data = 0;
 
 void *MPIX_SYNC_EMPTY               = (void*)&ompi_mpix_sync_empty;
-void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)&ompi_mpix_sync_no_completion_data;
+/** void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)&ompi_mpix_sync_no_completion_data; */
+void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)0xdeadead;
 
 
 int MPIX_Sync_init(MPIX_Sync *sync)
@@ -44,10 +45,10 @@ int MPIX_Sync_probe(MPIX_Sync sync)
     return opal_list_get_size(&sync->completion_list);
 }
 
-int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request request, void *completion_data)
+int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request *request, void *completion_data)
 {
     void *tmp_ptr = REQUEST_PENDING;
-    ompi_request_t *req = (ompi_request_t*) request;
+    ompi_request_t *req = (ompi_request_t*) *request;
 
     req->usr_cbdata = completion_data;
 
@@ -56,16 +57,23 @@ int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request request, void *completion_data)
         if (REQUEST_COMPLETE(req) &&
             MPIX_SYNC_NO_COMPLETION_DATA != completion_data) {
                 ompi_mpix_sync_generate_completion(sync, req);
-                return OPAL_SUCCESS;
+                goto complete_req;
         } else {
             /* Request already attached itself to another sync */
             /* this should not happen. */
+            printf("sync already attached.\n");
             return OPAL_ERR_FATAL;
         }
     }
 
     /* increase the count if attach success. */
     OPAL_THREAD_ADD_FETCH32(&sync->super.count, 1);
+
+complete_req:
+    if ( !req->req_persistent ) {
+        *request = MPI_REQUEST_NULL;
+    }
+
     return OPAL_SUCCESS;
 }
 
@@ -82,7 +90,7 @@ void MPIX_Progress(void)
 
 void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status)
 {
-    int rc;
+    int rc = MPI_SUCCESS;
     void *cbdata = NULL;
     static uint16_t visited = 0;
 
@@ -118,9 +126,13 @@ void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status)
     MPIX_SYNC_COMPLETION_OBJECT_RETURN(c_obj);
 
     /* free the request and catch the error. */
-    rc = ompi_request_free(&ompi_request);
-    if (rc != MPI_SUCCESS) {
-        printf("well..shit\n");
+    if ( ompi_request->req_persistent ) {
+        ompi_request->req_state = OMPI_REQUEST_INACTIVE;
+    } else {
+        rc = ompi_request_free(&ompi_request);
+        if (rc != MPI_SUCCESS) {
+            printf("well..shit\n");
+        }
     }
 
     if ( visited > QUERY_PROGRESS_THRESHOLD ) {

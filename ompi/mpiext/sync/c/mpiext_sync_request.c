@@ -2,10 +2,13 @@
 
 int ompi_mpix_sync_generate_completion(ompi_mpix_sync_t *sync, ompi_request_t *req)
 {
+    static int count = 0;
     /* get completion object */
     ompi_mpix_sync_completion_object_t *c_obj;
     c_obj = (ompi_mpix_sync_completion_object_t*)
                 opal_free_list_get (&ompi_mpix_sync_component.completion_pool);
+
+    assert(NULL != c_obj);
 
     c_obj->cbdata = req->usr_cbdata;
     c_obj->request = req;

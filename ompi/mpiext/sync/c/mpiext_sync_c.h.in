@@ -3,7 +3,7 @@ typedef struct ompi_mpix_sync_s *MPIX_Sync;
 OMPI_DECLSPEC int MPIX_Sync_init(MPIX_Sync *sync);
 OMPI_DECLSPEC void MPIX_Sync_free(MPIX_Sync *sync);
 
-OMPI_DECLSPEC int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request request, void *completion_data);
+OMPI_DECLSPEC int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request *request, void *completion_data);
 
 OMPI_DECLSPEC int MPIX_Sync_waitall(MPIX_Sync sync);
 OMPI_DECLSPEC int MPIX_Sync_size(MPIX_Sync sync);

@@ -26,9 +26,9 @@ static int sync_init(void)
                             OBJ_CLASS(ompi_mpix_sync_completion_object_t),
                             0,
                             opal_cache_line_size,
-                            64,
-                            128,
-                            64,
+                            512,
+                            -1,
+                            512,
                             NULL, 0, NULL, NULL, NULL);
 
     return OPAL_SUCCESS;
