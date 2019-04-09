@@ -10,14 +10,16 @@ char ompi_mpix_sync_empty = 0;
 char ompi_mpix_sync_no_completion_data = 0;
 
 void *MPIX_SYNC_EMPTY               = (void*)&ompi_mpix_sync_empty;
-/** void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)&ompi_mpix_sync_no_completion_data; */
-void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)0xdeadead;
+void *MPIX_SYNC_NO_COMPLETION_DATA  = (void*)&ompi_mpix_sync_no_completion_data;
 
 
 int MPIX_Sync_init(MPIX_Sync *sync)
 {
     ompi_mpix_sync_t *tmp;
     tmp = calloc(1,sizeof(ompi_mpix_sync_t));
+
+    /* mark this sync as an extension */
+    tmp->super.sync_extension = true;
 
     tmp->num_completed = 0;
     tmp->state = SYNC_STATE_CLEAN;
@@ -49,6 +51,8 @@ int MPIX_Sync_attach(MPIX_Sync sync, MPI_Request *request, void *completion_data
 {
     void *tmp_ptr = REQUEST_PENDING;
     ompi_request_t *req = (ompi_request_t*) *request;
+
+    /** printf("Attach: req:%p cbdata:%p\n", *request, completion_data); */
 
     req->usr_cbdata = completion_data;
 
@@ -116,6 +120,7 @@ void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status)
     /* get the cbdata to return to the user. */
     ompi_request = c_obj->request;
     cbdata = c_obj->cbdata;
+    /** printf("\t\tquery: request:%p cbdata:%p\n", ompi_request, cbdata); */
 
     /* Give back the status. */
     if ( MPI_STATUS_IGNORE != status ) {
