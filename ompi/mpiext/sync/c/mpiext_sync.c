@@ -148,3 +148,57 @@ void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status)
 
     return cbdata;
 }
+
+void MPIX_Sync_query_bulk(int incount, MPIX_Sync sync, int *outcount, void **cbdata, MPI_Status *status)
+{
+    int rc = MPI_SUCCESS;
+    int nret, ncompleted;
+
+    static uint16_t visited = 0;
+
+    volatile opal_list_item_t *ptr,*sentinel;
+    ompi_request_t *ompi_request;
+    ompi_mpix_sync_completion_object_t *c_obj;
+
+    ncompleted = opal_list_get_size(&sync->completion_list);
+    if (ncompleted != 0) {
+        /** printf("query_bulk: asked for %d and found %d completion.\n",incount, ncompleted); */
+    } else {
+        opal_progress();
+        *outcount = 0;
+        return;
+    }
+    nret = ncompleted;
+    if (ncompleted > incount) {
+        nret = incount;
+    }
+
+    for (int i=0;i<nret;i++) {
+        c_obj = (ompi_mpix_sync_completion_object_t*)
+                    opal_list_remove_first(&sync->completion_list);
+
+        /* get the cbdata to return to the user. */
+        ompi_request = c_obj->request;
+        cbdata[i] = c_obj->cbdata;
+
+        /* Give back the status. */
+        if ( MPI_STATUS_IGNORE != status ) {
+            status[i] = ompi_request->req_status;
+        }
+
+        /* free the request and catch the error. */
+        if ( ompi_request->req_persistent ) {
+            ompi_request->req_state = OMPI_REQUEST_INACTIVE;
+        } else {
+            rc = ompi_request_free(&ompi_request);
+            if (rc != MPI_SUCCESS) {
+                printf("well..shit\n");
+            }
+        }
+        /* return the completion object to the pool */
+        MPIX_SYNC_COMPLETION_OBJECT_RETURN(c_obj);
+    }
+
+    *outcount = nret;
+    return;
+}
