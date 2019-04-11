@@ -10,7 +10,7 @@ OMPI_DECLSPEC int MPIX_Sync_size(MPIX_Sync sync);
 
 OMPI_DECLSPEC int MPIX_Sync_probe(MPIX_Sync sync);
 OMPI_DECLSPEC void* MPIX_Sync_query(MPIX_Sync sync, MPI_Status *status);
-OMPI_DECLSPEC void MPIX_Sync_query_bulk(int incount, MPIX_Sync sync, int *outcount, void **cbdata, MPI_Status *status);
+OMPI_DECLSPEC int MPIX_Sync_query_bulk(int incount, MPIX_Sync sync, int *outcount, void **cbdata, MPI_Status *status);
 
 OMPI_DECLSPEC void MPIX_Progress(void);
 

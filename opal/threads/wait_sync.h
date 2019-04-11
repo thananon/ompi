@@ -35,6 +35,7 @@ typedef struct ompi_wait_sync_t {
     volatile bool signaling;
 
     bool sync_extension;
+    opal_list_t completed_requests;
 } ompi_wait_sync_t;
 
 #define REQUEST_PENDING        (void*)0L

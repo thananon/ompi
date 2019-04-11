@@ -3,7 +3,7 @@
 #include "ompi/mpiext/mpiext.h"
 #include "mpiext_sync_types.h"
 
-ompi_mpix_sync_component_t ompi_mpix_sync_component;
+ompi_mpix_sync_component_t ompi_mpix_sync_component = {0};
 
 static void sync_completion_construct (ompi_mpix_sync_completion_object_t *c_obj)
 {

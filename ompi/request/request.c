@@ -212,13 +212,3 @@ int ompi_request_persistent_noop_create(ompi_request_t** request)
     *request = req;
     return OMPI_SUCCESS;
 }
-
-int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req)
-{
-    /* do not generate completion for non-extension sync. */
-    if (false == sync->sync_extension) {
-        return OPAL_SUCCESS;
-    }
-
-    return ompi_mpix_sync_generate_completion((ompi_mpix_sync_t*)sync, req);
-}

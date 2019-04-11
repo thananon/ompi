@@ -365,7 +365,6 @@ int ompi_request_finalize(void);
  */
 int ompi_request_persistent_noop_create(ompi_request_t **request);
 
-int ompi_request_generate_completion(ompi_wait_sync_t *sync, ompi_request_t *req);
 /**
  * Cancel a pending request.
  */
@@ -461,7 +460,8 @@ static inline int ompi_request_complete(ompi_request_t* request, bool with_signa
                     wait_sync_update(tmp_sync, 1, request->req_status.MPI_ERROR);
 
                     /* MPIX_Sync Extension */
-                    ompi_request_generate_completion(tmp_sync, request);
+                    opal_list_append(&tmp_sync->completed_requests,
+                            (opal_list_item_t*) request);
                 }
             }
         } else
